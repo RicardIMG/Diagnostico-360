@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Diagnóstico 360 — inteligência diagnóstica para transformar dados em previsibilidade e decisão." />
+    <title>Diagnóstico 360</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Pular para o conteúdo</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand" aria-label="Diagnóstico 360">
+          <span class="brand-mark">360°</span>
+          <span><strong>DIAGNÓSTICO 360</strong><small>Inteligência tributária & empresarial</small></span>
+        </div>
+        <nav aria-label="Navegação principal" id="nav"></nav>
+        <div class="sidebar-footer">
+          <div class="coverage-mini"><span>Cobertura do diagnóstico</span><strong id="coverageMini">87%</strong></div>
+          <div class="progress"><i id="coverageBar"></i></div>
+          <button class="ghost full" data-action="open-method">Metodologia e limites</button>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <button class="icon-button menu-button" data-action="toggle-menu" aria-label="Abrir menu">☰</button>
+          <div class="context">
+            <label><span>Organização</span><select id="orgSelect" aria-label="Organização"></select></label>
+            <label><span>Projeto</span><select id="projectSelect" aria-label="Projeto"></select></label>
+          </div>
+          <div class="top-actions">
+            <button class="icon-button notification" data-action="go-pending" aria-label="Ver pendências">◎<b id="notificationCount">0</b></button>
+            <button class="profile" data-action="profile"><span>AC</span><span><strong>Alessandra Corrêa</strong><small>Administradora AC</small></span></button>
+          </div>
+        </header>
+        <main id="main" tabindex="-1"></main>
+      </div>
+    </div>
+    <div class="toast-region" id="toasts" aria-live="polite"></div>
+    <dialog id="dialog"><div id="dialogContent"></div></dialog>
+    <input type="file" id="fileInput" hidden multiple accept=".xml,.csv,.xlsx,.pdf,.zip,.txt" />
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
