@@ -166,14 +166,14 @@ function renderDashboard() {
   return `${pageHead("Visão executiva", `Bom dia, ${document.querySelector(".profile strong").textContent.split(" ")[0]}.`, hasProject ? "Veja o que afeta o resultado, o que pode acontecer e o que precisa ser feito antes." : "O ambiente está limpo. Cadastre a primeira empresa real para iniciar o diagnóstico.", `${hasProject ? '<button class="ghost" data-view="relatorios">Ver relatório</button>' : ''}<button class="button gold" data-action="new-diagnosis">Novo diagnóstico</button>`)}
     <div class="notice"><strong>${hasProject ? 'Diagnóstico em construção.' : 'Nenhum dado demonstrativo.'}</strong> ${hasProject ? 'Os indicadores serão preenchidos apenas por dados e validações deste projeto.' : 'Empresas, documentos, achados e métricas aparecerão somente após cadastro e processamento reais.'}</div>
     <section class="grid metrics" aria-label="Indicadores principais">
-      ${metric("Oportunidades mapeadas", money.format(state.findings.reduce((s,x)=>s+x.impact,0)), "+12,4% desde a última execução", "↗")}
-      ${metric("Economia potencial", money.format(Math.max(0, calc.delta * 12)), "Estimativa — não realizada", "◎")}
+      ${metric("Oportunidades mapeadas", money.format(state.findings.reduce((s,x)=>s+x.impact,0)), state.findings.length ? "Soma dos impactos estimados dos achados" : "Nenhum achado processado", "↗")}
+      ${metric("Economia potencial", money.format(Math.max(0, calc.delta * 12)), state.scenario.revenue > 0 ? "Estimativa calculada — não realizada" : "Sem premissas reais informadas", "◎")}
       ${metric("Ações em andamento", state.actions.filter((x)=>x.status === "Em andamento").length, `${state.actions.filter((x)=>x.status !== "Concluído").length} ações abertas`, "✓")}
       ${metric("Confiabilidade dos dados", `${score()}%`, qualityStatus(score()).label, "◉")}
     </section>
     <section class="grid two-col">
       <article class="card"><div class="card-head"><div><h3>Projeção da carga tributária</h3><p>Transição 2026–2033 com premissas editáveis</p></div><button class="ghost" data-view="cenarios">Simular</button></div>
-        <div class="chart">${years.map((row)=>`<div class="bar-group"><i class="bar" style="height:${Math.max(8, calc.currentTax/maxTax*100)}%" title="Atual: ${money.format(calc.currentTax)}"></i><i class="bar alt" style="height:${Math.max(8,row.blendedTax/maxTax*100)}%" title="Projetado: ${money.format(row.blendedTax)}"></i><label>${row.year}</label></div>`).join("")}</div>
+        <div class="chart">${years.map((row)=>`<div class="bar-group"><i class="bar" style="height:${calc.currentTax > 0 ? Math.max(8, calc.currentTax/maxTax*100) : 0}%" title="Atual: ${money.format(calc.currentTax)}"></i><i class="bar alt" style="height:${row.blendedTax > 0 ? Math.max(8,row.blendedTax/maxTax*100) : 0}%" title="Projetado: ${money.format(row.blendedTax)}"></i><label>${row.year}</label></div>`).join("")}</div>
         <div class="legend"><span><i></i>Regime atual</span><span><i class="alt"></i>Cenário projetado</span></div>
       </article>
       <article class="card"><div class="card-head"><div><h3>Qualidade do diagnóstico</h3><p>Empresa, período e módulos ativos</p></div>${status(qualityStatus(score()).label)}</div>
@@ -186,7 +186,7 @@ function renderDashboard() {
         <ul class="impact-list">${impacts.length ? impacts.map((item)=>`<li><span class="impact-icon">${item.area.slice(0,1)}</span><span><strong>${item.title}</strong><small>${item.area} · confiança ${item.confidence}%</small></span><span class="impact-value">${money.format(item.impact)}</span></li>`).join("") : '<li><span><strong>Nenhum impacto apurado</strong><small>Importe e processe dados reais para gerar achados.</small></span></li>'}</ul>
       </article>
       <article class="card"><div class="card-head"><div><h3>Próximas decisões</h3><p>Prazos que merecem atenção</p></div></div>
-        <ul class="timeline">${state.actions.filter((x)=>x.status!=="Concluído").slice(0,4).map((item)=>`<li><span class="impact-icon">${item.due.slice(0,2)}</span><span><strong>${item.title}</strong><small>${item.owner} · ${item.horizon}</small></span></li>`).join("")}</ul>
+        <ul class="timeline">${state.actions.filter((x)=>x.status!=="Concluído").slice(0,4).map((item)=>`<li><span class="impact-icon">${item.due.slice(0,2)}</span><span><strong>${item.title}</strong><small>${item.owner} · ${item.horizon}</small></span></li>`).join("") || '<li><span><strong>Nenhuma decisão pendente</strong><small>As ações reais deste projeto aparecerão aqui.</small></span></li>'}</ul>
       </article>
     </section>`;
 }
@@ -194,22 +194,27 @@ function metric(label, value, delta, icon) { return `<article class="card metric
 
 function renderDiagnosticos() {
   const q = qualityStatus(score());
-  const stages = [["Cadastro",true],["Documentos",true],["Conciliação",true],["Classificação",true],["Cenários",false],["Liberação",false]];
+  const openFindings = state.findings.filter((item) => item.status !== 'Concluído').length;
+  const stages = [["Cadastro",true],["Documentos",state.documents.length > 0],["Conciliação",state.quality.reconciliation > 0],["Classificação",state.findings.length > 0],["Cenários",state.scenario.revenue > 0],["Liberação",score() >= 80 && openFindings === 0]];
+  const currentStage = Math.max(0, stages.findIndex(([, done]) => !done));
+  const executionId = `EXEC-${String(activeProject().id).slice(0, 8).toUpperCase()}`;
+  const motorLabel = state.rules.length ? `v${state.rules[state.rules.length - 1].version}` : 'Nenhum motor homologado';
+  const pendingItems = state.findings.filter((item) => item.status === 'Condicional' || item.status === 'Revisão');
   return `${pageHead("Jornada do diagnóstico", "Diagnósticos", "Cada execução preserva dados, regras, premissas e resultados para reprodução e auditoria.", `<button class="button gold" data-action="new-diagnosis">Novo diagnóstico</button>`)}
     <section class="card"><div class="card-head"><div><h3>${activeProject().name}</h3><p>${activeOrg().name} · ${activeProject().period} · pacote ${activeProject().package}</p></div>${status(activeProject().status)}</div>
-      <div class="workflow">${stages.map(([label,done],i)=>`<div class="workflow-step ${done?"done":i===4?"current":""}"><b>${done?"✓":i+1}</b><strong>${label}</strong><small>${done?"Concluído":i===4?"Em análise":"Aguardando"}</small></div>`).join("")}</div>
+      <div class="workflow">${stages.map(([label,done],i)=>`<div class="workflow-step ${done?"done":i===currentStage?"current":""}"><b>${done?"✓":i+1}</b><strong>${label}</strong><small>${done?"Concluído":i===currentStage?"Próxima etapa":"Aguardando"}</small></div>`).join("")}</div>
     </section>
     <section class="grid two-col" style="margin-top:18px">
-      <article class="card"><div class="card-head"><div><h3>Contrato da execução</h3><p>Identificação e governança obrigatórias</p></div><span class="pill">EXEC-007</span></div>
+      <article class="card"><div class="card-head"><div><h3>Contrato da execução</h3><p>Identificação e governança obrigatórias</p></div><span class="pill">${executionId}</span></div>
         <div class="table-wrap"><table><tbody>
           <tr><th>Organização</th><td>${activeOrg().name}<br><small>${activeOrg().cnpj} · ${activeOrg().city}</small></td></tr>
           <tr><th>Escopo</th><td>${activeProject().scope}</td></tr><tr><th>Competência</th><td>${activeProject().period}</td></tr>
-          <tr><th>Motor</th><td>MOTOR-2.4.1 · regras vigentes na data de corte</td></tr><tr><th>Qualidade</th><td>${status(q.label)} ${score()}% de confiança</td></tr>
-          <tr><th>Decisão</th><td>Liberação condicionada à resolução de 3 exceções materiais</td></tr>
+          <tr><th>Motor</th><td>${motorLabel}</td></tr><tr><th>Qualidade</th><td>${status(q.label)} ${score()}% de confiança</td></tr>
+          <tr><th>Decisão</th><td>${pendingItems.length ? `Liberação condicionada à resolução de ${pendingItems.length} pendência(s) real(is)` : 'Nenhuma restrição material registrada até o momento'}</td></tr>
         </tbody></table></div>
       </article>
       <article class="card"><div class="card-head"><div><h3>Dependências e bloqueios</h3><p>O sistema informa exatamente o que falta</p></div></div>
-        <ul class="check-list"><li class="notice">⚠ Confirmar documentação de 7 fornecedores para crédito CBS.</li><li class="notice">⚠ Validar finalidade e NCM de 47 SKUs divergentes.</li><li class="notice">⚠ Aceitar premissa de repasse parcial nos contratos B2B.</li></ul>
+        <ul class="check-list">${pendingItems.length ? pendingItems.map((item)=>`<li class="notice">⚠ ${item.title}</li>`).join('') : '<li>Nenhuma pendência registrada. O sistema exibirá aqui somente exceções geradas a partir dos dados reais.</li>'}</ul>
         <button class="button full" data-view="achados">Tratar exceções</button>
       </article>
     </section>`;
@@ -218,7 +223,7 @@ function renderDiagnosticos() {
 function renderImportacao() {
   return `${pageHead("Base auditável", "Dados e importação", "Preserve o original, registre a origem e acompanhe integridade, cobertura e erros por arquivo.", `<button class="ghost" data-action="export-data">Exportar inventário</button><button class="button gold" data-action="pick-files">Importar arquivos</button>`)}
     <section class="dropzone" id="dropzone"><div><div class="dropzone-icon">⇧</div><h2>Solte seus arquivos aqui</h2><p>XML, ZIP, CSV, XLSX, PDF e TXT. XML e CSV são lidos diretamente; demais formatos entram na fila de processamento do ambiente.</p><button class="button" data-action="pick-files">Selecionar arquivos</button></div></section>
-    <section class="card" style="margin-top:18px"><div class="card-head"><div><h3>Arquivos recebidos</h3><p>${state.documents.reduce((sum,x)=>sum+(x.records||0),0).toLocaleString("pt-BR")} registros identificados</p></div>${status("Cobertura 91%")}</div>
+    <section class="card" style="margin-top:18px"><div class="card-head"><div><h3>Arquivos recebidos</h3><p>${state.documents.reduce((sum,x)=>sum+(x.records||0),0).toLocaleString("pt-BR")} registros identificados</p></div>${status(`Cobertura ${state.quality.coverage}%`)}</div>
       <div class="grid">${state.documents.map((file)=>`<div class="file-row"><span class="file-icon">${file.type.split("/")[0]}</span><span><strong>${file.name}</strong><small>${file.size} · ${file.records || 0} registros · ${file.at}</small></span>${status(file.status)}<button class="icon-button" data-file="${file.id}" aria-label="Detalhes do arquivo">›</button></div>`).join("")}</div>
     </section>`;
 }
@@ -227,9 +232,9 @@ function renderCenarios() {
   const calc = calculateScenario(state.scenario);
   const years = transitionYears(state.scenario);
   return `${pageHead("Previsibilidade", "Cenários 2026–2033", "Compare alternativas equivalentes, identifique pontos de virada e veja quais premissas sustentam a recomendação.", `<button class="ghost" data-action="reset-scenario">Restaurar premissas</button><button class="button gold" data-action="save-scenario">Salvar versão</button>`)}
-    <div class="notice"><strong>Premissas transparentes:</strong> alíquotas de referência são editáveis e precisam ser classificadas como oficiais ou estimadas. Este cenário usa uma estimativa para demonstração.</div>
+    <div class="notice"><strong>Premissas transparentes:</strong> alíquotas de referência são editáveis e precisam ser classificadas como oficiais ou estimadas. ${state.scenario.revenue > 0 ? 'Os resultados abaixo usam exclusivamente as premissas salvas neste projeto.' : 'Nenhuma premissa real foi informada; os resultados permanecem zerados.'}</div>
     <section class="grid two-col">
-      <article class="card"><div class="card-head"><div><h3>Premissas do cenário</h3><p>Mesmo período, volume, mix e preços</p></div><span class="pill">CEN-v4</span></div>
+      <article class="card"><div class="card-head"><div><h3>Premissas do cenário</h3><p>Mesmo período, volume, mix e preços</p></div><span class="pill">RASCUNHO</span></div>
         <form id="scenarioForm" class="form-grid">
           ${scenarioField("revenue","Receita anual (R$)",state.scenario.revenue)}${scenarioField("purchases","Compras elegíveis (R$)",state.scenario.purchases)}
           ${scenarioField("payroll","Folha anual (R$)",state.scenario.payroll)}${scenarioField("fixedCosts","Custos fixos (R$)",state.scenario.fixedCosts)}
@@ -267,8 +272,8 @@ function renderRelatorios() {
   const calc = calculateScenario(state.scenario);
   const impacts = [...state.findings].sort((a,b)=>b.impact-a.impact).slice(0,5);
   return `${pageHead("Entrega integrada", "Relatório executivo", "A visão do empresário e a memória técnica são produzidas pela mesma versão do motor.", `<button class="ghost" data-action="export-json">Exportar dados</button><button class="button gold" data-action="print-report">Imprimir / salvar PDF</button>`)}
-    <article class="card" id="report"><div class="report-cover"><div class="eyebrow">Diagnóstico 360 · Relatório executivo</div><h2>${activeOrg().name}</h2><p>${activeProject().period} · EXEC-007 · MOTOR-2.4.1</p><p>PREVISIBILIDADE PARA DECIDIR ANTES QUE O IMPACTO ACONTEÇA.</p></div>
-      <section class="report-section"><div class="card-head"><div><h2>Situação atual</h2><p>Leitura executiva do diagnóstico</p></div>${status(qualityStatus(score()).label)}</div><p>Foram processados ${state.documents.reduce((s,x)=>s+(x.records||0),0).toLocaleString("pt-BR")} registros com ${score()}% de confiabilidade. A conclusão permanece condicional até resolver as exceções materiais de classificação e documentação de créditos.</p></section>
+    <article class="card" id="report"><div class="report-cover"><div class="eyebrow">Diagnóstico 360 · Relatório executivo</div><h2>${activeOrg().name}</h2><p>${activeProject().period} · EXEC-${String(activeProject().id).slice(0, 8).toUpperCase()}</p><p>PREVISIBILIDADE PARA DECIDIR ANTES QUE O IMPACTO ACONTEÇA.</p></div>
+      <section class="report-section"><div class="card-head"><div><h2>Situação atual</h2><p>Leitura executiva do diagnóstico</p></div>${status(qualityStatus(score()).label)}</div><p>Foram identificados ${state.documents.reduce((s,x)=>s+(x.records||0),0).toLocaleString("pt-BR")} registros nos arquivos processados, com ${score()}% de confiabilidade calculada. Conclusões somente serão apresentadas quando houver evidências e regras vinculadas.</p></section>
       <section class="report-section"><h2>Impactos prioritários</h2><div class="table-wrap"><table><thead><tr><th>Decisão</th><th>Impacto</th><th>Confiança</th><th>Status</th></tr></thead><tbody>${impacts.map(x=>`<tr><td><strong>${x.title}</strong><br><small>${x.condition}</small></td><td>${money.format(x.impact)}</td><td>${x.confidence}%</td><td>${status(x.status)}</td></tr>`).join("")}</tbody></table></div></section>
       <section class="report-section"><h2>Cenário comparável</h2><div class="grid three-col" style="margin-top:15px">${metric("Carga atual",money.format(calc.currentTax),"por mês","A")}${metric("Carga regular",money.format(calc.regularTax),"por mês","B")}${metric("Ponto de decisão",money.format(Math.abs(calc.delta)),calc.delta>0?"vantagem estimada":"custo adicional","∆")}</div></section>
       <section class="report-section"><h2>Próximos passos</h2><ol>${state.actions.filter(x=>x.status!=="Concluído").map(x=>`<li><strong>${x.title}</strong> — ${x.owner}, até ${x.due}.</li>`).join("")}</ol></section>
@@ -313,7 +318,7 @@ function formDialog(kind) {
 }
 function newDiagnosisDialog() {
   openDialog(`<div class="dialog-head"><div><div class="eyebrow">Onboarding orientado</div><h2>Novo diagnóstico</h2></div><button class="close" data-action="close-dialog">×</button></div><form id="diagnosisForm" class="form-grid">
-    <label class="field" style="grid-column:1/-1"><span>Nome da organização</span><input name="orgName" required></label><label class="field"><span>CNPJ</span><input name="cnpj" required></label><label class="field"><span>Regime</span><select name="regime"><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label><label class="field"><span>Nome do projeto</span><input name="projectName" value="Diagnóstico inicial" required></label><label class="field"><span>Período</span><input name="period" value="01/2026–12/2026" required></label><label class="field" style="grid-column:1/-1"><span>Objetivo do estudo</span><textarea name="scope" required>Fiscal, tributário, financeiro e operacional</textarea></label><button class="button gold" style="grid-column:1/-1">Criar diagnóstico</button></form>`);
+    <label class="field" style="grid-column:1/-1"><span>Nome da organização</span><input name="orgName" required></label><label class="field"><span>CNPJ</span><input name="cnpj" required></label><label class="field"><span>Regime</span><select name="regime"><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label><label class="field"><span>Nome do projeto</span><input name="projectName" placeholder="Ex.: Diagnóstico tributário anual" required></label><label class="field"><span>Período</span><input name="period" placeholder="Ex.: 01/2026–12/2026" required></label><label class="field" style="grid-column:1/-1"><span>Objetivo do estudo</span><textarea name="scope" placeholder="Descreva o escopo real desta execução" required></textarea></label><button class="button gold" style="grid-column:1/-1">Criar diagnóstico</button></form>`);
 }
 function ruleDialog() {
   openDialog(`<div class="dialog-head"><div><div class="eyebrow">Governança metodológica</div><h2>Nova regra</h2></div><button class="close" data-action="close-dialog">×</button></div><form id="ruleForm" class="form-grid"><label class="field"><span>Identificador</span><input name="id" required></label><label class="field"><span>Tema</span><input name="theme" required></label><label class="field" style="grid-column:1/-1"><span>Título</span><input name="title" required></label><label class="field" style="grid-column:1/-1"><span>Fonte oficial e dispositivo</span><textarea name="source" required></textarea></label><label class="field"><span>Versão</span><input name="version" required></label><label class="field"><span>Vigência</span><input name="effective" type="date" required></label><button class="button gold" style="grid-column:1/-1">Salvar para revisão</button></form>`);
@@ -385,7 +390,7 @@ document.addEventListener("click", (event) => {
   if (action === "export-audit") exportRows("audit");
   if (action === "export-json") download("diagnostico-360-dados.json", JSON.stringify(state,null,2), "application/json");
   if (action === "print-report") window.print();
-  if (action === "save-scenario") { state.audit.unshift({at:new Date().toLocaleString("pt-BR"),user:currentUser.name,event:"Premissas do cenário salvas",version:"CEN-v5"});saveState();toast("Cenário salvo como nova versão."); }
+  if (action === "save-scenario") { const version=`CEN-${state.audit.filter((item)=>item.event==="Premissas do cenário salvas").length+1}`; state.audit.unshift({at:new Date().toLocaleString("pt-BR"),user:currentUser.name,event:"Premissas do cenário salvas",version});saveState();toast(`Cenário salvo como ${version}.`); }
   if (action === "reset-scenario") { state.scenario=structuredClone(seed.scenario);saveState();render();toast("Premissas restauradas."); }
 });
 
