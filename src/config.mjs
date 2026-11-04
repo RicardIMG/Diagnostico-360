@@ -44,7 +44,6 @@ export function loadConfig() {
   };
   if (dbDialect === 'mysql' && !config.databaseUrl) throw new Error("DATABASE_URL é obrigatória para MySQL.");
   if (storageDriver === 's3' && (!config.s3.bucket || !config.s3.accessKeyId || !config.s3.secretAccessKey)) throw new Error("S3_BUCKET, S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY são obrigatórias para S3.");
-  if (production && !config.bootstrap.adminPassword) throw new Error("BOOTSTRAP_ADMIN_PASSWORD é obrigatória na primeira implantação.");
   if (config.bootstrap.tenantUserEmail && !config.bootstrap.tenantUserPassword) throw new Error("BOOTSTRAP_TENANT_USER_PASSWORD é obrigatória quando BOOTSTRAP_TENANT_USER_EMAIL for usada.");
   return config;
 }
