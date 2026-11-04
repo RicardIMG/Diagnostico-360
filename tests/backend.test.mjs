@@ -24,8 +24,14 @@ test("backend autentica, isola tenant e persiste arquivo com integridade", async
 
     const bootstrap = await app.inject({ method: 'GET', url: '/api/bootstrap', headers: { cookie, 'x-tenant-id': tenantId } });
     assert.equal(bootstrap.statusCode, 200);
-    const organizationId = bootstrap.json().organizations[0].id;
-    const projectId = bootstrap.json().projects[0].id;
+    assert.equal(bootstrap.json().organizations.length, 0);
+    assert.equal(bootstrap.json().projects.length, 0);
+    const organization = await app.inject({ method: 'POST', url: '/api/organizations', headers: { cookie, 'x-tenant-id': tenantId }, payload: { name: 'Empresa Real Teste', cnpj: '00.000.000/0001-00' } });
+    assert.equal(organization.statusCode, 200);
+    const organizationId = organization.json().id;
+    const project = await app.inject({ method: 'POST', url: '/api/projects', headers: { cookie, 'x-tenant-id': tenantId }, payload: { organizationId, name: 'Diagnóstico real', period: '01/2026–12/2026' } });
+    assert.equal(project.statusCode, 200);
+    const projectId = project.json().id;
 
     const state = await app.inject({ method: 'GET', url: `/api/projects/${projectId}/state`, headers: { cookie, 'x-tenant-id': tenantId } });
     const firstSave = await app.inject({ method: 'PUT', url: `/api/projects/${projectId}/state`, headers: { cookie, 'x-tenant-id': tenantId }, payload: { data: { scenario: { revenue: 1000 } }, version: state.json().version } });

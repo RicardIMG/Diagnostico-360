@@ -33,7 +33,9 @@ export async function migrate(db) {
     .addColumn('id', 'varchar(36)', (c) => c.primaryKey()).addColumn('name', 'varchar(200)', (c) => c.notNull()).addColumn('created_at', 'varchar(35)', (c) => c.notNull()).execute());
   await createTableIfMissing(db, 'users', () => db.schema.createTable('users')
     .addColumn('id', 'varchar(36)', (c) => c.primaryKey()).addColumn('name', 'varchar(200)', (c) => c.notNull()).addColumn('email', 'varchar(320)', (c) => c.notNull().unique())
-    .addColumn('password_hash', 'text', (c) => c.notNull()).addColumn('is_platform_admin', 'integer', (c) => c.notNull().defaultTo(0)).addColumn('active', 'integer', (c) => c.notNull().defaultTo(1)).addColumn('created_at', 'varchar(35)', (c) => c.notNull()).execute());
+    .addColumn('password_hash', 'text', (c) => c.notNull()).addColumn('is_platform_admin', 'integer', (c) => c.notNull().defaultTo(0)).addColumn('must_change_password', 'integer', (c) => c.notNull().defaultTo(1)).addColumn('active', 'integer', (c) => c.notNull().defaultTo(1)).addColumn('created_at', 'varchar(35)', (c) => c.notNull()).execute());
+  const usersTable = (await db.introspection.getTables()).find((table) => table.name === 'users');
+  if (usersTable && !usersTable.columns.some((column) => column.name === 'must_change_password')) await db.schema.alterTable('users').addColumn('must_change_password', 'integer', (c) => c.notNull().defaultTo(1)).execute();
   await createTableIfMissing(db, 'memberships', () => db.schema.createTable('memberships')
     .addColumn('user_id', 'varchar(36)', (c) => c.notNull().references('users.id').onDelete('cascade')).addColumn('tenant_id', 'varchar(36)', (c) => c.notNull().references('tenants.id').onDelete('cascade'))
     .addColumn('role', 'varchar(30)', (c) => c.notNull()).addPrimaryKeyConstraint('memberships_pk', ['user_id', 'tenant_id']).execute());
@@ -70,15 +72,17 @@ async function bootstrap(db, config) {
   const countRow = await db.selectFrom('users').select(sql`count(*)`.as('count')).executeTakeFirst();
   if (Number(countRow?.count || 0) > 0) return;
   if (!config.bootstrap.adminPassword) throw new Error("Banco vazio: configure BOOTSTRAP_ADMIN_PASSWORD.");
-  const now = new Date().toISOString(), tenantId = newId(), userId = newId(), orgId = newId(), projectId = newId();
+  const now = new Date().toISOString(), tenantId = newId(), userId = newId();
   const passwordHash = await hashPassword(config.bootstrap.adminPassword);
   await db.transaction().execute(async (trx) => {
     await trx.insertInto('tenants').values({ id: tenantId, name: config.bootstrap.tenantName, created_at: now }).execute();
-    await trx.insertInto('users').values({ id: userId, name: config.bootstrap.adminName, email: config.bootstrap.adminEmail, password_hash: passwordHash, is_platform_admin: 1, active: 1, created_at: now }).execute();
+    await trx.insertInto('users').values({ id: userId, name: config.bootstrap.adminName, email: config.bootstrap.adminEmail, password_hash: passwordHash, is_platform_admin: 1, must_change_password: 0, active: 1, created_at: now }).execute();
     await trx.insertInto('memberships').values({ user_id: userId, tenant_id: tenantId, role: 'owner' }).execute();
-    await trx.insertInto('organizations').values({ id: orgId, tenant_id: tenantId, name: 'ACME Autopeças Ltda.', cnpj: '12.345.678/0001-90', regime: 'Simples Nacional', city: 'Rondonópolis/MT', sector: 'Autopeças', created_at: now, updated_at: now }).execute();
-    await trx.insertInto('projects').values({ id: projectId, tenant_id: tenantId, organization_id: orgId, name: 'Transição tributária 2026', period: '01/2025–12/2025', status: 'Em análise', scope: 'Fiscal, tributário, financeiro e operacional', package_name: 'SN-AUTOPECAS-1.2', created_at: now, updated_at: now }).execute();
-    await trx.insertInto('project_states').values({ project_id: projectId, tenant_id: tenantId, data_json: '{}', version: 1, updated_by: userId, updated_at: now }).execute();
+    if (config.bootstrap.tenantUserEmail && config.bootstrap.tenantUserEmail !== config.bootstrap.adminEmail) {
+      const tenantUserId = newId();
+      await trx.insertInto('users').values({ id: tenantUserId, name: config.bootstrap.tenantUserName || config.bootstrap.tenantUserEmail, email: config.bootstrap.tenantUserEmail, password_hash: await hashPassword(config.bootstrap.tenantUserPassword), is_platform_admin: 0, must_change_password: 1, active: 1, created_at: now }).execute();
+      await trx.insertInto('memberships').values({ user_id: tenantUserId, tenant_id: tenantId, role: 'owner' }).execute();
+    }
   });
 }
 

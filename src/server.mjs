@@ -7,7 +7,7 @@ import fastifyStatic from "@fastify/static";
 import { extname, join } from "node:path";
 import { audit, createDatabase } from "./database.mjs";
 import { loadConfig } from "./config.mjs";
-import { hashToken, newId, newSessionToken, sha256, verifyPassword } from "./security.mjs";
+import { hashPassword, hashToken, newId, newSessionToken, sha256, verifyPassword } from "./security.mjs";
 import { createStorage } from "./storage.mjs";
 
 const COOKIE = 'd360_session';
@@ -42,10 +42,10 @@ export async function buildServer(options = {}) {
     const token = request.cookies[COOKIE];
     if (!token) throw httpError(401, 'Autenticação necessária.');
     const row = await db.selectFrom('sessions').innerJoin('users', 'users.id', 'sessions.user_id')
-      .select(['users.id', 'users.name', 'users.email', 'users.is_platform_admin', 'users.active', 'sessions.expires_at'])
+      .select(['users.id', 'users.name', 'users.email', 'users.is_platform_admin', 'users.must_change_password', 'users.active', 'sessions.expires_at'])
       .where('sessions.token_hash', '=', hashToken(token)).executeTakeFirst();
     if (!row || !Number(row.active) || row.expires_at <= now()) throw httpError(401, 'Sessão inválida ou expirada.');
-    request.user = { id: row.id, name: row.name, email: row.email, isPlatformAdmin: Boolean(row.is_platform_admin) };
+    request.user = { id: row.id, name: row.name, email: row.email, isPlatformAdmin: Boolean(row.is_platform_admin), mustChangePassword: Boolean(row.must_change_password) };
     return request.user;
   }
 
@@ -89,7 +89,7 @@ export async function buildServer(options = {}) {
     const token = newSessionToken(), createdAt = now(), expiresAt = new Date(Date.now() + config.sessionTtlHours * 3600000).toISOString();
     await db.insertInto('sessions').values({ token_hash: hashToken(token), user_id: user.id, expires_at: expiresAt, created_at: createdAt }).execute();
     reply.setCookie(COOKIE, token, { path: '/', httpOnly: true, sameSite: 'strict', secure: config.cookieSecure, maxAge: config.sessionTtlHours * 3600 });
-    return { user: { id: user.id, name: user.name, email: user.email, isPlatformAdmin: Boolean(user.is_platform_admin) } };
+    return { user: { id: user.id, name: user.name, email: user.email, isPlatformAdmin: Boolean(user.is_platform_admin), mustChangePassword: Boolean(user.must_change_password) } };
   });
 
   app.post('/api/auth/logout', { preHandler: authenticate }, async (request, reply) => {
@@ -97,6 +97,19 @@ export async function buildServer(options = {}) {
     await db.deleteFrom('sessions').where('token_hash', '=', hashToken(token)).execute();
     reply.clearCookie(COOKIE, { path: '/' });
     return { ok: true };
+  });
+
+  app.post('/api/auth/change-password', { preHandler: authenticate }, async (request) => {
+    const currentPassword = String(request.body?.currentPassword || '');
+    const newPassword = String(request.body?.newPassword || '');
+    const row = await db.selectFrom('users').select(['password_hash']).where('id', '=', request.user.id).executeTakeFirstOrThrow();
+    if (!await verifyPassword(currentPassword, row.password_hash)) throw httpError(401, 'Senha atual inválida.');
+    const passwordHash = await hashPassword(newPassword);
+    await db.transaction().execute(async (trx) => {
+      await trx.updateTable('users').set({ password_hash: passwordHash, must_change_password: 0 }).where('id', '=', request.user.id).execute();
+      await trx.deleteFrom('sessions').where('user_id', '=', request.user.id).execute();
+    });
+    return { ok: true, loginRequired: true };
   });
 
   app.get('/api/auth/me', { preHandler: authenticate }, async (request) => ({ user: request.user, tenants: await allowedTenants(request.user) }));
@@ -115,6 +128,30 @@ export async function buildServer(options = {}) {
     const tenant = { id: newId(), name, created_at: now() };
     await db.insertInto('tenants').values(tenant).execute();
     return { id: tenant.id, name: tenant.name };
+  });
+
+  app.get('/api/users', { preHandler: [authenticate, authorizeTenant] }, async (request) => {
+    requireManager(request);
+    const rows = await db.selectFrom('memberships').innerJoin('users', 'users.id', 'memberships.user_id')
+      .select(['users.id', 'users.name', 'users.email', 'users.active', 'users.must_change_password', 'memberships.role'])
+      .where('memberships.tenant_id', '=', request.tenantId).orderBy('users.name').execute();
+    return { users: rows.map((row) => ({ id: row.id, name: row.name, email: row.email, active: Boolean(row.active), mustChangePassword: Boolean(row.must_change_password), role: row.role })) };
+  });
+
+  app.post('/api/users', { preHandler: [authenticate, authorizeTenant] }, async (request) => {
+    requireManager(request);
+    const name = String(request.body?.name || '').trim(), email = String(request.body?.email || '').trim().toLowerCase();
+    const password = String(request.body?.password || ''), role = String(request.body?.role || 'member');
+    if (name.length < 2 || !email.includes('@')) throw httpError(400, 'Nome ou e-mail inválido.');
+    if (!['owner', 'admin', 'analyst', 'member'].includes(role)) throw httpError(400, 'Perfil inválido.');
+    if (await db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst()) throw httpError(409, 'Já existe um usuário com este e-mail.');
+    const id = newId(), timestamp = now();
+    await db.transaction().execute(async (trx) => {
+      await trx.insertInto('users').values({ id, name, email, password_hash: await hashPassword(password), is_platform_admin: 0, must_change_password: 1, active: 1, created_at: timestamp }).execute();
+      await trx.insertInto('memberships').values({ user_id: id, tenant_id: request.tenantId, role }).execute();
+    });
+    await audit(db, { tenantId: request.tenantId, userId: request.user.id, action: 'user.created', entityType: 'user', entityId: id, details: { name, email, role }, ip: request.ip });
+    return { id, name, email, role, mustChangePassword: true };
   });
 
   app.post('/api/organizations', { preHandler: [authenticate, authorizeTenant] }, async (request) => {

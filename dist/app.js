@@ -18,50 +18,16 @@ const seed = {
   activeProject: null,
   organizations: [],
   projects: [],
-  quality: { coverage: 91, reconciliation: 86, integrity: 94, validated: 78 },
-  scenario: { revenue: 4800000, purchases: 2650000, payroll: 570000, fixedCosts: 340000, currentRate: 11.2, regularRate: 28.1, eligibleCredit: 73 },
+  quality: { coverage: 0, reconciliation: 0, integrity: 0, validated: 0 },
+  scenario: { revenue: 0, purchases: 0, payroll: 0, fixedCosts: 0, currentRate: 0, regularRate: 0, eligibleCredit: 0 },
   documents: [],
-  findings: [
-    { id: "ACH-001", area: "Fiscal", title: "Receita monofásica sem segregação no PGDAS-D", impact: 184300, priority: "Crítica", confidence: 96, status: "Confirmado", evidence: "312 itens de NFe conciliados com PGDAS-D", rule: "LC 123/2006, art. 18; Res. CGSN 140/2018", cause: "Cadastro de natureza da receita sem tratamento monofásico", condition: "Permanece válida se NCM e legislação específica forem confirmados por competência." },
-    { id: "ACH-002", area: "Cadastro", title: "NCM divergente entre cadastro e XML", impact: 48700, priority: "Alta", confidence: 88, status: "Revisão", evidence: "47 SKUs em 193 documentos", rule: "NT 2025.002 RTC; tabela NCM vigente", cause: "Cadastro mestre desatualizado", condition: "O impacto muda caso a finalidade ou composição do produto seja distinta." },
-    { id: "ACH-003", area: "Créditos", title: "Crédito potencial de CBS na cadeia", impact: 126800, priority: "Alta", confidence: 74, status: "Condicional", evidence: "Compras elegíveis estimadas em R$ 1,9 mi", rule: "LC 214/2025 — não cumulatividade", cause: "Fornecedores com documentação parcial", condition: "Depende de documento idôneo, extinção do débito e ausência de vedação." },
-    { id: "ACH-004", area: "Financeiro", title: "Descasamento entre PMR e PMP", impact: 93500, priority: "Média", confidence: 92, status: "Confirmado", evidence: "PMR 47 dias; PMP 31 dias", rule: "Metodologia gerencial D360 v1.4", cause: "Prazo comercial de clientes superior ao prazo negociado com fornecedores", condition: "Considera custo de capital de 1,4% a.m. e volume atual." },
-    { id: "ACH-005", area: "Comercial", title: "Margem negativa em 18 SKUs após transição", impact: 211400, priority: "Crítica", confidence: 83, status: "Condicional", evidence: "Mix e preço médio dos últimos 12 meses", rule: "Motor de precificação D360 v2.1", cause: "Baixo crédito elegível e preço sem cláusula de recomposição", condition: "Sensível à alíquota de referência e possibilidade de repasse." },
-    { id: "ACH-006", area: "Documentos", title: "XML cancelado incluído na base financeira", impact: 12780, priority: "Média", confidence: 100, status: "Confirmado", evidence: "Chave 5125…9012 e evento de cancelamento", rule: "Ajuste SINIEF e leiaute NF-e", cause: "Integração ERP não consumiu evento", condition: "Correção documental obrigatória antes do fechamento." },
-  ],
-  actions: [
-    { id: "ACT-01", title: "Validar NCM dos 47 SKUs divergentes", finding: "ACH-002", owner: "Marina", due: "18/10/2026", horizon: "30 dias", status: "Em andamento", priority: "Alta" },
-    { id: "ACT-02", title: "Retificar segregação do PGDAS-D", finding: "ACH-001", owner: "Rafael", due: "25/10/2026", horizon: "30 dias", status: "A fazer", priority: "Crítica" },
-    { id: "ACT-03", title: "Renegociar prazo com fornecedores classe A", finding: "ACH-004", owner: "Carlos", due: "15/11/2026", horizon: "60 dias", status: "Em andamento", priority: "Média" },
-    { id: "ACT-04", title: "Implantar tabela de preço por cenário", finding: "ACH-005", owner: "Bianca", due: "10/12/2026", horizon: "90 dias", status: "A fazer", priority: "Alta" },
-    { id: "ACT-05", title: "Excluir XML cancelado da conciliação", finding: "ACH-006", owner: "João", due: "14/10/2026", horizon: "30 dias", status: "Concluído", priority: "Média" },
-  ],
-  rules: [
-    { id: "REG-SN-018", theme: "Simples Nacional", title: "Segregação de receita monofásica", source: "LC 123/2006, art. 18; Res. CGSN 140/2018", version: "3.2", effective: "01/01/2026", status: "Homologada" },
-    { id: "REG-CBS-041", theme: "IBS/CBS", title: "Opção pelo regime regular", source: "LC 214/2025, arts. 41 e 47", version: "2.0", effective: "01/01/2027", status: "Homologada" },
-    { id: "REG-XML-RTC", theme: "Documentos", title: "Grupos e validações IBS/CBS", source: "NT 2025.002 RTC", version: "1.31", effective: "05/10/2026", status: "Em revisão" },
-    { id: "MET-QUAL-001", theme: "Qualidade", title: "Nota de confiabilidade", source: "Metodologia Diagnóstico 360", version: "1.4", effective: "01/08/2026", status: "Homologada" },
-  ],
-  coverage: [
-    ["Cadastro e enquadramento", "Homologado", 100], ["Importação e conciliação", "Homologado", 94], ["Fiscal atual", "Homologado", 91],
-    ["IBS e CBS", "Parcial", 82], ["Simples Nacional", "Homologado", 96], ["Créditos", "Parcial", 78],
-    ["Estoque", "Parcial", 73], ["Precificação", "Homologado", 89], ["Ciclo financeiro", "Homologado", 93],
-    ["Split payment", "Parcial", 68], ["Contábil", "Homologado", 86], ["Contratos", "Revisão especializada", 61],
-  ],
-  clients: [
-    { name: "Oficina Horizonte", value: 724000, margin: 28.4, evolution: 12 }, { name: "Auto Center Brasil", value: 581000, margin: 24.8, evolution: 4 },
-    { name: "Frota Sul", value: 438000, margin: 19.3, evolution: -7 }, { name: "Mecânica Prado", value: 321000, margin: 31.2, evolution: 16 },
-    { name: "Varejo pulverizado", value: 1874000, margin: 34.1, evolution: 8 },
-  ],
-  suppliers: [
-    { name: "Distribuidora Nacional", value: 812000, compliance: 96 }, { name: "Peças Prime", value: 593000, compliance: 82 },
-    { name: "Importadora Sul", value: 471000, compliance: 64 }, { name: "Fábrica Centro-Oeste", value: 389000, compliance: 91 },
-  ],
-  audit: [
-    { at: "13/10/2026 10:18", user: "Alessandra Corrêa", event: "Premissas do cenário v4 aprovadas", version: "MOTOR-2.4.1" },
-    { at: "13/10/2026 09:42", user: "Rafael Mendes", event: "Conciliação financeira reprocessada", version: "EXEC-007" },
-    { at: "12/10/2026 16:05", user: "Sistema", event: "PGDAS_2025.pdf importado", version: "PARSER-1.8.0" },
-  ],
+  findings: [],
+  actions: [],
+  rules: [],
+  coverage: [],
+  clients: [],
+  suppliers: [],
+  audit: [],
 };
 
 let state = structuredClone(seed);
@@ -194,10 +160,11 @@ function renderContext() {
 function renderDashboard() {
   const calc = calculateScenario(state.scenario);
   const years = transitionYears(state.scenario);
-  const maxTax = Math.max(...years.map((x) => x.blendedTax));
+  const maxTax = Math.max(1, ...years.map((x) => x.blendedTax));
   const impacts = [...state.findings].sort((a,b) => b.impact-a.impact).slice(0,4);
-  return `${pageHead("Visão executiva", `Bom dia, ${document.querySelector(".profile strong").textContent.split(" ")[0]}.`, "Veja o que afeta o resultado, o que pode acontecer e o que precisa ser feito antes.", `<button class="ghost" data-view="relatorios">Ver relatório</button><button class="button gold" data-action="new-diagnosis">Novo diagnóstico</button>`)}
-    <div class="notice"><strong>Resultado condicional.</strong> O cenário possui boa cobertura, mas 3 exceções materiais ainda exigem evidência ou revisão especializada.</div>
+  const hasProject = Boolean(state.activeProject);
+  return `${pageHead("Visão executiva", `Bom dia, ${document.querySelector(".profile strong").textContent.split(" ")[0]}.`, hasProject ? "Veja o que afeta o resultado, o que pode acontecer e o que precisa ser feito antes." : "O ambiente está limpo. Cadastre a primeira empresa real para iniciar o diagnóstico.", `${hasProject ? '<button class="ghost" data-view="relatorios">Ver relatório</button>' : ''}<button class="button gold" data-action="new-diagnosis">Novo diagnóstico</button>`)}
+    <div class="notice"><strong>${hasProject ? 'Diagnóstico em construção.' : 'Nenhum dado demonstrativo.'}</strong> ${hasProject ? 'Os indicadores serão preenchidos apenas por dados e validações deste projeto.' : 'Empresas, documentos, achados e métricas aparecerão somente após cadastro e processamento reais.'}</div>
     <section class="grid metrics" aria-label="Indicadores principais">
       ${metric("Oportunidades mapeadas", money.format(state.findings.reduce((s,x)=>s+x.impact,0)), "+12,4% desde a última execução", "↗")}
       ${metric("Economia potencial", money.format(Math.max(0, calc.delta * 12)), "Estimativa — não realizada", "◎")}
@@ -216,7 +183,7 @@ function renderDashboard() {
     </section>
     <section class="grid two-col" style="margin-top:18px">
       <article class="card"><div class="card-head"><div><h3>Impactos prioritários</h3><p>Ordenados por valor e materialidade</p></div><button class="ghost" data-view="achados">Ver todos</button></div>
-        <ul class="impact-list">${impacts.map((item)=>`<li><span class="impact-icon">${item.area.slice(0,1)}</span><span><strong>${item.title}</strong><small>${item.area} · confiança ${item.confidence}%</small></span><span class="impact-value">${money.format(item.impact)}</span></li>`).join("")}</ul>
+        <ul class="impact-list">${impacts.length ? impacts.map((item)=>`<li><span class="impact-icon">${item.area.slice(0,1)}</span><span><strong>${item.title}</strong><small>${item.area} · confiança ${item.confidence}%</small></span><span class="impact-value">${money.format(item.impact)}</span></li>`).join("") : '<li><span><strong>Nenhum impacto apurado</strong><small>Importe e processe dados reais para gerar achados.</small></span></li>'}</ul>
       </article>
       <article class="card"><div class="card-head"><div><h3>Próximas decisões</h3><p>Prazos que merecem atenção</p></div></div>
         <ul class="timeline">${state.actions.filter((x)=>x.status!=="Concluído").slice(0,4).map((item)=>`<li><span class="impact-icon">${item.due.slice(0,2)}</span><span><strong>${item.title}</strong><small>${item.owner} · ${item.horizon}</small></span></li>`).join("")}</ul>
@@ -319,6 +286,7 @@ function renderGovernanca() {
 function render() {
   renderNav(); renderContext();
   const views = { dashboard:renderDashboard, diagnosticos:renderDiagnosticos, importacao:renderImportacao, cenarios:renderCenarios, achados:renderAchados, plano:renderPlano, relatorios:renderRelatorios, governanca:renderGovernanca };
+  if (!state.activeProject && state.activeView !== 'dashboard') state.activeView = 'dashboard';
   main.innerHTML = (views[state.activeView] || renderDashboard)();
   main.focus({ preventScroll: true });
   if (state.activeView === "importacao") bindDropzone();
@@ -354,7 +322,10 @@ function methodDialog() {
   openDialog(`<div class="dialog-head"><div><div class="eyebrow">Metodologia e limites</div><h2>Clareza sem falsa certeza</h2></div><button class="close" data-action="close-dialog">×</button></div><p>O Diagnóstico 360 conecta dados, regras e cenários. Resultados automáticos só são liberados dentro de pacotes legais homologados e com cobertura suficiente.</p><ul><li>Estimativas são visualmente distintas de valores confirmados.</li><li>Crédito potencial não é apresentado como crédito realizado.</li><li>Exceções materiais seguem para revisão especializada.</li><li>Cada número retorna à evidência, fórmula, regra e versão.</li><li>O sistema não substitui parecer jurídico ou responsabilidade profissional.</li></ul>`);
 }
 function profileDialog() {
-  openDialog(`<div class="dialog-head"><div><div class="eyebrow">Perfil autenticado</div><h2>${currentUser.name}</h2></div><button class="close" data-action="close-dialog">×</button></div><p>${currentUser.email}</p><div class="notice">Sessão protegida no servidor · acesso isolado por tenant · arquivos centralizados com hash SHA-256.</div><button class="ghost full" data-action="logout">Sair da plataforma</button>`);
+  openDialog(`<div class="dialog-head"><div><div class="eyebrow">Perfil autenticado</div><h2>${currentUser.name}</h2></div><button class="close" data-action="close-dialog">×</button></div><p>${currentUser.email}</p><div class="notice">Sessão protegida no servidor · acesso isolado por tenant · arquivos centralizados com hash SHA-256.</div><div class="actions"><button class="button" data-action="change-password">Alterar senha</button><button class="ghost" data-action="logout">Sair da plataforma</button></div>`);
+}
+function passwordDialog() {
+  openDialog(`<div class="dialog-head"><div><div class="eyebrow">Segurança da conta</div><h2>${currentUser.mustChangePassword ? 'Defina sua nova senha' : 'Alterar senha'}</h2></div>${currentUser.mustChangePassword ? '' : '<button class="close" data-action="close-dialog">×</button>'}</div><p>A nova senha deve ter pelo menos 12 caracteres.</p><form id="passwordForm" class="form-grid"><label class="field" style="grid-column:1/-1"><span>Senha atual</span><input name="currentPassword" type="password" autocomplete="current-password" required></label><label class="field"><span>Nova senha</span><input name="newPassword" type="password" autocomplete="new-password" minlength="12" required></label><label class="field"><span>Confirmar nova senha</span><input name="confirmation" type="password" autocomplete="new-password" minlength="12" required></label><button class="button gold" style="grid-column:1/-1">Salvar nova senha</button></form>`);
 }
 function download(name, content, type="text/plain;charset=utf-8") {
   const blob = new Blob([content], { type }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
@@ -394,7 +365,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.file) { const file=state.documents.find(x=>x.id===target.dataset.file); openDialog(`<div class="dialog-head"><h2>${file.name}</h2><button class="close" data-action="close-dialog">×</button></div><p>${status(file.status)}</p><p><strong>Integridade:</strong> ${file.integrity}</p><p><strong>Tamanho:</strong> ${file.size}</p><p><strong>Registros:</strong> ${file.records}</p><p><strong>Recebido:</strong> ${file.at}</p><div class="actions"><button class="button" data-download-file="${file.id}">Baixar original</button><button class="ghost" data-delete-file="${file.id}">Excluir</button></div>`); return; }
   if (target.dataset.downloadFile) { window.location.href=`/api/documents/${target.dataset.downloadFile}/download?tenantId=${encodeURIComponent(currentTenantId)}`; return; }
   if (target.dataset.deleteFile) { if (!confirm('Excluir este arquivo do inventário? A ação ficará registrada na auditoria.')) return; api(`/api/documents/${target.dataset.deleteFile}`, { method:'DELETE' }).then(()=>{ state.documents=state.documents.filter(x=>x.id!==target.dataset.deleteFile); closeDialog(); render(); toast('Arquivo excluído e ação registrada.'); }).catch((error)=>toast(error.message)); return; }
-  if (target.dataset.advance) { const item=state.actions.find(x=>x.id===target.dataset.advance); const stages=["A fazer","Em andamento","Em validação","Concluído"]; if(item.status!=="Concluído") item.status=stages[Math.min(3,stages.indexOf(item.status)+1)]; saveState(); render(); toast("Etapa atualizada e registrada na trilha local."); return; }
+  if (target.dataset.advance) { const item=state.actions.find(x=>x.id===target.dataset.advance); const stages=["A fazer","Em andamento","Em validação","Concluído"]; if(item.status!=="Concluído") item.status=stages[Math.min(3,stages.indexOf(item.status)+1)]; saveState(); render(); toast("Etapa atualizada no projeto."); return; }
   const action = target.dataset.action;
   if (action === "toggle-menu") document.querySelector("#sidebar").classList.toggle("open");
   if (action === "go-pending") { state.activeView="achados"; saveState(); render(); }
@@ -402,6 +373,7 @@ document.addEventListener("click", (event) => {
   if (action === "close-dialog") closeDialog();
   if (action === "open-method") methodDialog();
   if (action === "profile") profileDialog();
+  if (action === "change-password") passwordDialog();
   if (action === "logout") { api('/api/auth/logout', { method:'POST' }).finally(()=>location.reload()); }
   if (action === "new-diagnosis") newDiagnosisDialog();
   if (action === "new-finding") formDialog("finding");
@@ -413,7 +385,7 @@ document.addEventListener("click", (event) => {
   if (action === "export-audit") exportRows("audit");
   if (action === "export-json") download("diagnostico-360-dados.json", JSON.stringify(state,null,2), "application/json");
   if (action === "print-report") window.print();
-  if (action === "save-scenario") { state.audit.unshift({at:new Date().toLocaleString("pt-BR"),user:"Alessandra Corrêa",event:"Premissas do cenário salvas",version:"CEN-v5"});saveState();toast("Cenário salvo como nova versão."); }
+  if (action === "save-scenario") { state.audit.unshift({at:new Date().toLocaleString("pt-BR"),user:currentUser.name,event:"Premissas do cenário salvas",version:"CEN-v5"});saveState();toast("Cenário salvo como nova versão."); }
   if (action === "reset-scenario") { state.scenario=structuredClone(seed.scenario);saveState();render();toast("Premissas restauradas."); }
 });
 
@@ -436,6 +408,12 @@ document.addEventListener("submit", async (event) => {
     return;
   }
   if (event.target.id === "ruleForm") state.rules.unshift({...data,status:"Em revisão"});
+  if (event.target.id === 'passwordForm') {
+    if (data.newPassword !== data.confirmation) return toast('A confirmação da nova senha não confere.');
+    try { await api('/api/auth/change-password', { method:'POST', body:JSON.stringify({ currentPassword:data.currentPassword, newPassword:data.newPassword }) }); toast('Senha alterada. Entre novamente.'); setTimeout(()=>location.reload(), 800); }
+    catch (error) { toast(error.message); }
+    return;
+  }
   saveState(); closeDialog(); render(); toast("Registro salvo com sucesso.");
 });
 document.querySelector("#orgSelect").addEventListener("change", async (event)=>{ const project=state.projects.find(x=>x.orgId===event.target.value); if(project) await switchProject(project.id); else { state.activeOrg=event.target.value; state.activeProject=null; savePreferences(); render(); } });
@@ -472,6 +450,7 @@ async function boot() {
     const tenantId = tenants.some((item)=>item.id===preferred) ? preferred : tenants[0]?.id;
     if (!tenantId) throw new Error('Sua conta não possui acesso a nenhum tenant.');
     await loadWorkspace(tenantId);
+    if (currentUser.mustChangePassword) passwordDialog();
   } catch (error) {
     showLogin(error.status === 401 ? '' : error.message);
   }

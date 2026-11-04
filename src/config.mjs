@@ -32,6 +32,9 @@ export function loadConfig() {
       adminName: process.env.BOOTSTRAP_ADMIN_NAME || "Administrador",
       adminEmail: (process.env.BOOTSTRAP_ADMIN_EMAIL || "admin@diagnostico360.local").toLowerCase(),
       adminPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD || (production ? "" : "troque-esta-senha"),
+      tenantUserName: process.env.BOOTSTRAP_TENANT_USER_NAME || "",
+      tenantUserEmail: (process.env.BOOTSTRAP_TENANT_USER_EMAIL || "").toLowerCase(),
+      tenantUserPassword: process.env.BOOTSTRAP_TENANT_USER_PASSWORD || "",
     },
     s3: {
       endpoint: process.env.S3_ENDPOINT, region: process.env.S3_REGION || "us-east-1", bucket: process.env.S3_BUCKET,
@@ -42,5 +45,6 @@ export function loadConfig() {
   if (dbDialect === 'mysql' && !config.databaseUrl) throw new Error("DATABASE_URL é obrigatória para MySQL.");
   if (storageDriver === 's3' && (!config.s3.bucket || !config.s3.accessKeyId || !config.s3.secretAccessKey)) throw new Error("S3_BUCKET, S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY são obrigatórias para S3.");
   if (production && !config.bootstrap.adminPassword) throw new Error("BOOTSTRAP_ADMIN_PASSWORD é obrigatória na primeira implantação.");
+  if (config.bootstrap.tenantUserEmail && !config.bootstrap.tenantUserPassword) throw new Error("BOOTSTRAP_TENANT_USER_PASSWORD é obrigatória quando BOOTSTRAP_TENANT_USER_EMAIL for usada.");
   return config;
 }
