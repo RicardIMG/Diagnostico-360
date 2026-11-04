@@ -28,6 +28,17 @@ async function createTableIfMissing(db, name, callback) {
   if (!tables.some((table) => table.name === name)) await callback();
 }
 
+async function createIndexIfMissing(db, name, table, columns) {
+  try {
+    await db.schema.createIndex(name).on(table).columns(columns).execute();
+  } catch (error) {
+    const duplicateIndex = error?.code === 'ER_DUP_KEYNAME'
+      || Number(error?.errno) === 1061
+      || /already exists|duplicate key name/i.test(String(error?.message || ''));
+    if (!duplicateIndex) throw error;
+  }
+}
+
 export async function migrate(db) {
   await createTableIfMissing(db, 'tenants', () => db.schema.createTable('tenants')
     .addColumn('id', 'varchar(36)', (c) => c.primaryKey()).addColumn('name', 'varchar(200)', (c) => c.notNull()).addColumn('created_at', 'varchar(35)', (c) => c.notNull()).execute());
@@ -64,8 +75,8 @@ export async function migrate(db) {
     .addColumn('id', 'varchar(36)', (c) => c.primaryKey()).addColumn('tenant_id', 'varchar(36)', (c) => c.notNull().references('tenants.id').onDelete('cascade'))
     .addColumn('user_id', 'varchar(36)', (c) => c.notNull().references('users.id')).addColumn('action', 'varchar(100)', (c) => c.notNull()).addColumn('entity_type', 'varchar(100)', (c) => c.notNull())
     .addColumn('entity_id', 'varchar(36)', (c) => c.notNull()).addColumn('details_json', 'text', (c) => c.notNull()).addColumn('ip', 'varchar(80)').addColumn('created_at', 'varchar(35)', (c) => c.notNull()).execute());
-  await db.schema.createIndex('documents_scope_idx').ifNotExists().on('documents').columns(['tenant_id', 'organization_id', 'project_id']).execute();
-  await db.schema.createIndex('audit_scope_idx').ifNotExists().on('audit_logs').columns(['tenant_id', 'created_at']).execute();
+  await createIndexIfMissing(db, 'documents_scope_idx', 'documents', ['tenant_id', 'organization_id', 'project_id']);
+  await createIndexIfMissing(db, 'audit_scope_idx', 'audit_logs', ['tenant_id', 'created_at']);
 }
 
 async function bootstrap(db, config) {
