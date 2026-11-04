@@ -20,6 +20,7 @@ export async function buildServer(options = {}) {
   const config = options.config || loadConfig();
   const db = options.db || await createDatabase(config);
   const storage = options.storage || createStorage(config);
+  await storage.initialize?.();
   const app = Fastify({ logger: true, trustProxy: config.trustProxy, bodyLimit: config.maxUploadBytes + 1024 * 1024 });
   app.decorate('db', db);
   app.decorate('storage', storage);
