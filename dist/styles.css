@@ -192,3 +192,12 @@ dialog::backdrop { background: rgba(12,26,26,.55); backdrop-filter: blur(4px); }
   .card { box-shadow: none; break-inside: avoid; }
   .print-only { display: block; }
 }
+
+.login-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 70% 15%, #f5df9d 0, transparent 27%), var(--ink); }
+.login-screen[hidden], .app-shell[hidden] { display: none !important; }
+.login-card { width: min(460px, 100%); display: grid; gap: 24px; padding: 34px; background: var(--paper); border-radius: 20px; box-shadow: 0 30px 80px #0008; }
+.login-card h1 { margin: 7px 0; font-size: clamp(2rem, 7vw, 3rem); }
+.login-card p { color: var(--muted); }
+.login-brand { color: var(--ink); }
+.login-brand small { color: var(--muted); }
+.form-error { min-height: 1.4em; margin: 0; color: #a13232 !important; font-weight: 700; }

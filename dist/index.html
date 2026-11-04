@@ -8,8 +8,21 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <section class="login-screen" id="loginScreen" hidden>
+      <form class="login-card" id="loginForm">
+        <div class="brand login-brand" aria-label="Diagnóstico 360">
+          <span class="brand-mark">360°</span>
+          <span><strong>DIAGNÓSTICO 360</strong><small>Ambiente seguro e multiempresa</small></span>
+        </div>
+        <div><div class="eyebrow">Acesso protegido</div><h1>Entre na plataforma</h1><p>Seus dados, empresas e arquivos são carregados do ambiente centralizado.</p></div>
+        <label class="field"><span>E-mail</span><input name="email" type="email" autocomplete="username" required></label>
+        <label class="field"><span>Senha</span><input name="password" type="password" autocomplete="current-password" minlength="12" required></label>
+        <p class="form-error" id="loginError" role="alert"></p>
+        <button class="button gold full" type="submit">Entrar com segurança</button>
+      </form>
+    </section>
     <a class="skip-link" href="#main">Pular para o conteúdo</a>
-    <div class="app-shell">
+    <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar" id="sidebar">
         <div class="brand" aria-label="Diagnóstico 360">
           <span class="brand-mark">360°</span>
@@ -26,12 +39,13 @@
         <header class="topbar">
           <button class="icon-button menu-button" data-action="toggle-menu" aria-label="Abrir menu">☰</button>
           <div class="context">
+            <label id="tenantContext"><span>Tenant</span><select id="tenantSelect" aria-label="Tenant"></select></label>
             <label><span>Organização</span><select id="orgSelect" aria-label="Organização"></select></label>
             <label><span>Projeto</span><select id="projectSelect" aria-label="Projeto"></select></label>
           </div>
           <div class="top-actions">
             <button class="icon-button notification" data-action="go-pending" aria-label="Ver pendências">◎<b id="notificationCount">0</b></button>
-            <button class="profile" data-action="profile"><span>AC</span><span><strong>Alessandra Corrêa</strong><small>Administradora AC</small></span></button>
+            <button class="profile" data-action="profile"><span id="profileInitials">--</span><span><strong id="profileName">Carregando…</strong><small id="profileRole">Usuário</small></span></button>
           </div>
         </header>
         <main id="main" tabindex="-1"></main>

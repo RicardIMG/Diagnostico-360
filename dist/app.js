@@ -1,6 +1,6 @@
 import { calculateScenario, classifyAbc, decimal, money, qualityStatus, scoreQuality, toCsv, transitionYears } from "./core.mjs";
 
-const STORAGE_KEY = "diagnostico360:v1";
+const PREFERENCES_KEY = "diagnostico360:preferences:v2";
 const navItems = [
   ["dashboard", "⌂", "Visão executiva"],
   ["diagnosticos", "◫", "Diagnósticos"],
@@ -14,23 +14,13 @@ const navItems = [
 
 const seed = {
   activeView: "dashboard",
-  activeOrg: "org-acme",
-  activeProject: "proj-2026",
-  organizations: [
-    { id: "org-acme", name: "ACME Autopeças Ltda.", cnpj: "12.345.678/0001-90", regime: "Simples Nacional", city: "Rondonópolis/MT", sector: "Autopeças" },
-    { id: "org-vita", name: "Clínica Vita Saúde Ltda.", cnpj: "28.445.198/0001-34", regime: "Simples Nacional", city: "Cuiabá/MT", sector: "Saúde" },
-  ],
-  projects: [
-    { id: "proj-2026", orgId: "org-acme", name: "Transição tributária 2026", period: "01/2025–12/2025", status: "Em análise", scope: "Fiscal, tributário, financeiro e operacional", package: "SN-AUTOPECAS-1.2" },
-    { id: "proj-vita", orgId: "org-vita", name: "Diagnóstico inicial", period: "01/2025–12/2025", status: "Coleta", scope: "Simples e prontidão", package: "SN-SERVICOS-1.0" },
-  ],
+  activeOrg: null,
+  activeProject: null,
+  organizations: [],
+  projects: [],
   quality: { coverage: 91, reconciliation: 86, integrity: 94, validated: 78 },
   scenario: { revenue: 4800000, purchases: 2650000, payroll: 570000, fixedCosts: 340000, currentRate: 11.2, regularRate: 28.1, eligibleCredit: 73 },
-  documents: [
-    { id: "doc-1", name: "NFe_saidas_2025.zip", type: "XML/ZIP", size: "86,4 MB", status: "Processado", records: 3842, integrity: "sha256:d27a…82c1", at: "12 out 2026, 15:42" },
-    { id: "doc-2", name: "PGDAS_2025.pdf", type: "PDF", size: "4,8 MB", status: "Processado", records: 12, integrity: "sha256:91af…11b4", at: "12 out 2026, 16:05" },
-    { id: "doc-3", name: "contas_receber.csv", type: "CSV", size: "1,2 MB", status: "Com alertas", records: 1258, integrity: "sha256:35ac…9bb3", at: "13 out 2026, 09:17" },
-  ],
+  documents: [],
   findings: [
     { id: "ACH-001", area: "Fiscal", title: "Receita monofásica sem segregação no PGDAS-D", impact: 184300, priority: "Crítica", confidence: 96, status: "Confirmado", evidence: "312 itens de NFe conciliados com PGDAS-D", rule: "LC 123/2006, art. 18; Res. CGSN 140/2018", cause: "Cadastro de natureza da receita sem tratamento monofásico", condition: "Permanece válida se NCM e legislação específica forem confirmados por competência." },
     { id: "ACH-002", area: "Cadastro", title: "NCM divergente entre cadastro e XML", impact: 48700, priority: "Alta", confidence: 88, status: "Revisão", evidence: "47 SKUs em 193 documentos", rule: "NT 2025.002 RTC; tabela NCM vigente", cause: "Cadastro mestre desatualizado", condition: "O impacto muda caso a finalidade ou composição do produto seja distinta." },
@@ -74,17 +64,98 @@ const seed = {
   ],
 };
 
-let state = loadState();
+let state = structuredClone(seed);
+let currentUser = null;
+let tenants = [];
+let currentTenantId = null;
+let stateVersion = 1;
+let saveTimer = null;
+let saveInFlight = false;
+let saveQueued = false;
 let findingFilter = "Todos";
 const main = document.querySelector("#main");
 const dialog = document.querySelector("#dialog");
 const fileInput = document.querySelector("#fileInput");
 
-function loadState() {
-  try { return { ...structuredClone(seed), ...JSON.parse(localStorage.getItem(STORAGE_KEY)) }; }
-  catch { return structuredClone(seed); }
+function preferences() { try { return JSON.parse(localStorage.getItem(PREFERENCES_KEY)) || {}; } catch { return {}; } }
+function savePreferences() { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ tenantId: currentTenantId, orgId: state.activeOrg, projectId: state.activeProject, activeView: state.activeView })); }
+
+async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (currentTenantId) headers.set('x-tenant-id', currentTenantId);
+  if (options.body && !(options.body instanceof FormData)) headers.set('content-type', 'application/json');
+  const response = await fetch(path, { ...options, headers, credentials: 'same-origin' });
+  const payload = response.headers.get('content-type')?.includes('application/json') ? await response.json() : null;
+  if (!response.ok) throw Object.assign(new Error(payload?.error || `Erro HTTP ${response.status}`), { status: response.status });
+  return payload;
 }
-function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+function projectStatePayload() {
+  const { organizations, projects, documents, activeOrg, activeProject, activeView, ...data } = state;
+  return data;
+}
+
+function saveState() {
+  savePreferences();
+  saveQueued = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushState, 450);
+}
+
+async function flushState() {
+  if (saveInFlight || !state.activeProject) return;
+  saveInFlight = true; saveQueued = false;
+  try {
+    const result = await api(`/api/projects/${state.activeProject}/state`, { method: 'PUT', body: JSON.stringify({ data: projectStatePayload(), version: stateVersion }) });
+    stateVersion = result.version;
+  } catch (error) {
+    if (error.status === 409) toast('Outro usuário alterou este projeto. Recarregue para evitar sobrescrever dados.');
+    else toast(`Falha ao salvar no servidor: ${error.message}`);
+  } finally {
+    saveInFlight = false;
+    if (saveQueued) flushState();
+  }
+}
+
+async function loadWorkspace(tenantId, preferredProjectId = null) {
+  currentTenantId = tenantId;
+  const bootstrap = await api('/api/bootstrap');
+  currentUser = bootstrap.user; tenants = bootstrap.tenants;
+  const pref = preferences();
+  const project = bootstrap.projects.find((item) => item.id === preferredProjectId)
+    || bootstrap.projects.find((item) => item.id === pref.projectId)
+    || bootstrap.projects[0];
+  if (!project) {
+    state = { ...structuredClone(seed), organizations: bootstrap.organizations, projects: bootstrap.projects, activeOrg: bootstrap.organizations[0]?.id || null, activeProject: null };
+  } else {
+    const [stored, inventory, auditTrail] = await Promise.all([
+      api(`/api/projects/${project.id}/state`),
+      api(`/api/documents?organizationId=${encodeURIComponent(project.orgId)}&projectId=${encodeURIComponent(project.id)}`),
+      api('/api/audit'),
+    ]);
+    stateVersion = stored.version;
+    state = { ...structuredClone(seed), ...stored.data, organizations: bootstrap.organizations, projects: bootstrap.projects, documents: inventory.documents, audit: mapAuditEvents(auditTrail.events), activeOrg: project.orgId, activeProject: project.id, activeView: pref.activeView || 'dashboard' };
+  }
+  savePreferences();
+  showApplication();
+  render();
+}
+
+async function switchProject(projectId) {
+  await flushState();
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project) return;
+  const [stored, inventory, auditTrail] = await Promise.all([api(`/api/projects/${project.id}/state`), api(`/api/documents?organizationId=${encodeURIComponent(project.orgId)}&projectId=${encodeURIComponent(project.id)}`), api('/api/audit')]);
+  stateVersion = stored.version;
+  const globals = { organizations: state.organizations, projects: state.projects };
+  state = { ...structuredClone(seed), ...stored.data, ...globals, documents: inventory.documents, audit: mapAuditEvents(auditTrail.events), activeOrg: project.orgId, activeProject: project.id, activeView: state.activeView };
+  savePreferences(); render();
+}
+
+function mapAuditEvents(events) {
+  const labels = { 'document.uploaded':'Arquivo enviado', 'document.downloaded':'Arquivo baixado', 'document.deleted':'Arquivo excluído', 'organization.created':'Empresa criada', 'organization.updated':'Empresa atualizada', 'project.created':'Diagnóstico criado' };
+  return events.map((event) => ({ at:new Date(event.createdAt).toLocaleString('pt-BR'), user:event.userName, event:`${labels[event.action] || event.action}${event.details?.name ? `: ${event.details.name}` : ''}`, version:event.entityType.toUpperCase() }));
+}
 function activeOrg() { return state.organizations.find((item) => item.id === state.activeOrg) || state.organizations[0]; }
 function activeProject() { return state.projects.find((item) => item.id === state.activeProject) || state.projects[0]; }
 function score() { return scoreQuality(state.quality); }
@@ -104,6 +175,9 @@ function renderNav() {
   document.querySelector("#nav").innerHTML = navItems.map(([id, icon, label]) => `<button class="nav-item ${state.activeView === id ? "active" : ""}" data-view="${id}"><span class="nav-icon">${icon}</span><span>${label}</span>${id === "achados" ? `<span class="nav-badge">${pendingCount()}</span>` : ""}</button>`).join("");
 }
 function renderContext() {
+  const tenantSelect = document.querySelector("#tenantSelect");
+  tenantSelect.innerHTML = tenants.map((tenant) => `<option value="${tenant.id}" ${tenant.id === currentTenantId ? "selected" : ""}>${tenant.name}</option>`).join("");
+  document.querySelector('#tenantContext').hidden = tenants.length < 2;
   const orgSelect = document.querySelector("#orgSelect");
   orgSelect.innerHTML = state.organizations.map((org) => `<option value="${org.id}" ${org.id === state.activeOrg ? "selected" : ""}>${org.name}</option>`).join("");
   const projects = state.projects.filter((item) => item.orgId === state.activeOrg);
@@ -112,6 +186,9 @@ function renderContext() {
   document.querySelector("#notificationCount").textContent = pendingCount();
   document.querySelector("#coverageMini").textContent = `${score()}%`;
   document.querySelector("#coverageBar").style.width = `${score()}%`;
+  document.querySelector('#profileName').textContent = currentUser?.name || 'Usuário';
+  document.querySelector('#profileRole').textContent = currentUser?.isPlatformAdmin ? 'Administrador da plataforma' : 'Usuário autorizado';
+  document.querySelector('#profileInitials').textContent = (currentUser?.name || '--').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 }
 
 function renderDashboard() {
@@ -277,7 +354,7 @@ function methodDialog() {
   openDialog(`<div class="dialog-head"><div><div class="eyebrow">Metodologia e limites</div><h2>Clareza sem falsa certeza</h2></div><button class="close" data-action="close-dialog">×</button></div><p>O Diagnóstico 360 conecta dados, regras e cenários. Resultados automáticos só são liberados dentro de pacotes legais homologados e com cobertura suficiente.</p><ul><li>Estimativas são visualmente distintas de valores confirmados.</li><li>Crédito potencial não é apresentado como crédito realizado.</li><li>Exceções materiais seguem para revisão especializada.</li><li>Cada número retorna à evidência, fórmula, regra e versão.</li><li>O sistema não substitui parecer jurídico ou responsabilidade profissional.</li></ul>`);
 }
 function profileDialog() {
-  openDialog(`<div class="dialog-head"><div><div class="eyebrow">Perfil ativo</div><h2>Alessandra Corrêa</h2></div><button class="close" data-action="close-dialog">×</button></div><p>Administradora AC · acesso a metodologia, usuários, normas, regras, modelos e liberação de relatórios.</p><div class="notice">Demonstração local: autenticação, MFA e isolamento no servidor serão configurados na etapa de infraestrutura do VPS.</div>`);
+  openDialog(`<div class="dialog-head"><div><div class="eyebrow">Perfil autenticado</div><h2>${currentUser.name}</h2></div><button class="close" data-action="close-dialog">×</button></div><p>${currentUser.email}</p><div class="notice">Sessão protegida no servidor · acesso isolado por tenant · arquivos centralizados com hash SHA-256.</div><button class="ghost full" data-action="logout">Sair da plataforma</button>`);
 }
 function download(name, content, type="text/plain;charset=utf-8") {
   const blob = new Blob([content], { type }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
@@ -290,22 +367,17 @@ function exportRows(kind) {
   if (kind === "audit") download("trilha-auditoria.csv", toCsv(state.audit), "text/csv;charset=utf-8");
 }
 async function handleFiles(files) {
-  for (const file of files) {
-    let records = 0, fileStatus = "Na fila";
-    try {
-      if (/\.xml$/i.test(file.name)) {
-        const xml = new DOMParser().parseFromString(await file.text(), "application/xml");
-        if (xml.querySelector("parsererror")) throw new Error("XML malformado");
-        records = xml.querySelectorAll("det, infNFe, CompNfse, infCte").length || 1; fileStatus = "Processado";
-      } else if (/\.csv$/i.test(file.name)) {
-        records = Math.max(0, (await file.text()).split(/\r?\n/).filter(Boolean).length - 1); fileStatus = "Processado";
-      } else if (/\.(pdf|zip|xlsx|txt)$/i.test(file.name)) { records = 0; fileStatus = "Na fila"; }
-      else { fileStatus = "Formato não suportado"; }
-    } catch { fileStatus = "Erro de leitura"; }
-    state.documents.unshift({ id: crypto.randomUUID(), name:file.name, type:file.name.split(".").pop().toUpperCase(), size:`${(file.size/1024/1024).toFixed(2)} MB`, status:fileStatus, records, integrity:`local:${file.lastModified.toString(16)}`, at:new Date().toLocaleString("pt-BR") });
-  }
-  state.quality.coverage = Math.min(100, state.quality.coverage + files.length);
-  saveState(); render(); toast(`${files.length} arquivo(s) registrado(s) com rastreabilidade local.`);
+  if (!state.activeOrg || !state.activeProject) return toast('Selecione uma organização e um projeto antes de importar.');
+  const form = new FormData();
+  form.append('organizationId', state.activeOrg); form.append('projectId', state.activeProject);
+  files.forEach((file) => form.append('files', file, file.name));
+  toast(`Enviando ${files.length} arquivo(s) ao armazenamento central…`);
+  try {
+    const result = await api('/api/documents', { method: 'POST', body: form });
+    state.documents.unshift(...result.documents);
+    state.quality.coverage = Math.min(100, state.quality.coverage + files.length);
+    saveState(); render(); toast(`${files.length} arquivo(s) salvo(s) no servidor com hash SHA-256.`);
+  } catch (error) { toast(`Falha no upload: ${error.message}`); }
 }
 function bindDropzone() {
   const zone = document.querySelector("#dropzone"); if (!zone) return;
@@ -319,7 +391,9 @@ document.addEventListener("click", (event) => {
   if (target.dataset.view) { state.activeView=target.dataset.view; saveState(); render(); document.querySelector("#sidebar").classList.remove("open"); return; }
   if (target.dataset.filter) { findingFilter=target.dataset.filter; render(); return; }
   if (target.dataset.finding) { detailFinding(target.dataset.finding); return; }
-  if (target.dataset.file) { const file=state.documents.find(x=>x.id===target.dataset.file); openDialog(`<div class="dialog-head"><h2>${file.name}</h2><button class="close" data-action="close-dialog">×</button></div><p>${status(file.status)}</p><p><strong>Integridade:</strong> ${file.integrity}</p><p><strong>Registros:</strong> ${file.records}</p><p><strong>Recebido:</strong> ${file.at}</p>`); return; }
+  if (target.dataset.file) { const file=state.documents.find(x=>x.id===target.dataset.file); openDialog(`<div class="dialog-head"><h2>${file.name}</h2><button class="close" data-action="close-dialog">×</button></div><p>${status(file.status)}</p><p><strong>Integridade:</strong> ${file.integrity}</p><p><strong>Tamanho:</strong> ${file.size}</p><p><strong>Registros:</strong> ${file.records}</p><p><strong>Recebido:</strong> ${file.at}</p><div class="actions"><button class="button" data-download-file="${file.id}">Baixar original</button><button class="ghost" data-delete-file="${file.id}">Excluir</button></div>`); return; }
+  if (target.dataset.downloadFile) { window.location.href=`/api/documents/${target.dataset.downloadFile}/download?tenantId=${encodeURIComponent(currentTenantId)}`; return; }
+  if (target.dataset.deleteFile) { if (!confirm('Excluir este arquivo do inventário? A ação ficará registrada na auditoria.')) return; api(`/api/documents/${target.dataset.deleteFile}`, { method:'DELETE' }).then(()=>{ state.documents=state.documents.filter(x=>x.id!==target.dataset.deleteFile); closeDialog(); render(); toast('Arquivo excluído e ação registrada.'); }).catch((error)=>toast(error.message)); return; }
   if (target.dataset.advance) { const item=state.actions.find(x=>x.id===target.dataset.advance); const stages=["A fazer","Em andamento","Em validação","Concluído"]; if(item.status!=="Concluído") item.status=stages[Math.min(3,stages.indexOf(item.status)+1)]; saveState(); render(); toast("Etapa atualizada e registrada na trilha local."); return; }
   const action = target.dataset.action;
   if (action === "toggle-menu") document.querySelector("#sidebar").classList.toggle("open");
@@ -328,6 +402,7 @@ document.addEventListener("click", (event) => {
   if (action === "close-dialog") closeDialog();
   if (action === "open-method") methodDialog();
   if (action === "profile") profileDialog();
+  if (action === "logout") { api('/api/auth/logout', { method:'POST' }).finally(()=>location.reload()); }
   if (action === "new-diagnosis") newDiagnosisDialog();
   if (action === "new-finding") formDialog("finding");
   if (action === "new-action") formDialog("action");
@@ -345,19 +420,61 @@ document.addEventListener("click", (event) => {
 document.addEventListener("input", (event) => {
   if (event.target.closest("#scenarioForm") && event.target.name) { state.scenario[event.target.name]=Number(event.target.value); saveState(); render(); }
 });
-document.addEventListener("submit", (event) => {
+document.addEventListener("submit", async (event) => {
+  if (event.target.id === 'loginForm') return;
   event.preventDefault(); const data=Object.fromEntries(new FormData(event.target));
   if (event.target.id === "quickForm") {
     if (event.target.dataset.kind === "action") state.actions.unshift({id:`ACT-${String(state.actions.length+1).padStart(2,"0")}`,title:data.title,owner:data.owner,due:new Date(`${data.due}T12:00`).toLocaleDateString("pt-BR"),finding:data.finding,horizon:data.horizon,status:"A fazer",priority:"Média"});
     else state.findings.unshift({id:`ACH-${String(state.findings.length+1).padStart(3,"0")}`,area:data.area,title:data.title,impact:Number(data.impact),priority:"Média",confidence:50,status:"Condicional",evidence:data.evidence,rule:"Fundamento pendente",cause:"Em apuração",condition:"Depende de revisão e evidência complementar."});
   }
-  if (event.target.id === "diagnosisForm") { const orgId=crypto.randomUUID(), projectId=crypto.randomUUID(); state.organizations.push({id:orgId,name:data.orgName,cnpj:data.cnpj,regime:data.regime,city:"Não informado",sector:"A classificar"});state.projects.push({id:projectId,orgId,name:data.projectName,period:data.period,status:"Coleta",scope:data.scope,package:"A HOMOLOGAR"});state.activeOrg=orgId;state.activeProject=projectId;state.activeView="diagnosticos"; }
+  if (event.target.id === "diagnosisForm") {
+    try {
+      const organization = await api('/api/organizations', { method:'POST', body:JSON.stringify({ name:data.orgName, cnpj:data.cnpj, regime:data.regime, city:'Não informado', sector:'A classificar' }) });
+      const project = await api('/api/projects', { method:'POST', body:JSON.stringify({ organizationId:organization.id, name:data.projectName, period:data.period, scope:data.scope, status:'Coleta', package:'A HOMOLOGAR' }) });
+      closeDialog(); await loadWorkspace(currentTenantId, project.id); state.activeView='diagnosticos'; savePreferences(); render(); toast('Empresa e diagnóstico criados no banco de dados.');
+    } catch (error) { toast(`Não foi possível criar o diagnóstico: ${error.message}`); }
+    return;
+  }
   if (event.target.id === "ruleForm") state.rules.unshift({...data,status:"Em revisão"});
   saveState(); closeDialog(); render(); toast("Registro salvo com sucesso.");
 });
-document.querySelector("#orgSelect").addEventListener("change",(event)=>{state.activeOrg=event.target.value;state.activeProject=state.projects.find(x=>x.orgId===state.activeOrg)?.id;saveState();render();});
-document.querySelector("#projectSelect").addEventListener("change",(event)=>{state.activeProject=event.target.value;saveState();render();});
+document.querySelector("#orgSelect").addEventListener("change", async (event)=>{ const project=state.projects.find(x=>x.orgId===event.target.value); if(project) await switchProject(project.id); else { state.activeOrg=event.target.value; state.activeProject=null; savePreferences(); render(); } });
+document.querySelector("#projectSelect").addEventListener("change", async (event)=>{ await switchProject(event.target.value); });
+document.querySelector("#tenantSelect").addEventListener("change", async (event)=>{ await flushState(); await loadWorkspace(event.target.value); });
 fileInput.addEventListener("change",()=>{handleFiles([...fileInput.files]);fileInput.value="";});
 dialog.addEventListener("click",(event)=>{if(event.target===dialog) closeDialog();});
 
-render();
+function showLogin(message = '') {
+  document.querySelector('#appShell').hidden = true;
+  document.querySelector('#loginScreen').hidden = false;
+  document.querySelector('#loginError').textContent = message;
+}
+
+function showApplication() {
+  document.querySelector('#loginScreen').hidden = true;
+  document.querySelector('#appShell').hidden = false;
+}
+
+document.querySelector('#loginForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button'); button.disabled = true;
+  const data = Object.fromEntries(new FormData(event.currentTarget));
+  try { await api('/api/auth/login', { method:'POST', body:JSON.stringify(data) }); await boot(); }
+  catch (error) { showLogin(error.message); }
+  finally { button.disabled = false; }
+});
+
+async function boot() {
+  try {
+    const identity = await api('/api/auth/me');
+    currentUser = identity.user; tenants = identity.tenants;
+    const preferred = preferences().tenantId;
+    const tenantId = tenants.some((item)=>item.id===preferred) ? preferred : tenants[0]?.id;
+    if (!tenantId) throw new Error('Sua conta não possui acesso a nenhum tenant.');
+    await loadWorkspace(tenantId);
+  } catch (error) {
+    showLogin(error.status === 401 ? '' : error.message);
+  }
+}
+
+boot();
