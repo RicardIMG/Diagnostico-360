@@ -137,6 +137,9 @@ function percent(value) { return `${decimal.format(value)}%`; }
 function pageHead(eyebrow, title, subtitle, actions = "") {
   return `<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p class="subtitle">${subtitle}</p></div>${actions ? `<div class="actions">${actions}</div>` : ""}</div>`;
 }
+function emptyProjectState(title, description) {
+  return `<section class="card empty-state"><div class="empty-state-icon">＋</div><h2>${title}</h2><p>${description}</p><button class="button gold" data-action="new-diagnosis">Cadastrar empresa e iniciar diagnóstico</button></section>`;
+}
 function renderNav() {
   document.querySelector("#nav").innerHTML = navItems.map(([id, icon, label]) => `<button class="nav-item ${state.activeView === id ? "active" : ""}" data-view="${id}"><span class="nav-icon">${icon}</span><span>${label}</span>${id === "achados" ? `<span class="nav-badge">${pendingCount()}</span>` : ""}</button>`).join("");
 }
@@ -193,6 +196,10 @@ function renderDashboard() {
 function metric(label, value, delta, icon) { return `<article class="card metric"><div class="metric-label"><span>${label}</span><span>${icon}</span></div><strong>${value}</strong><span class="delta">${delta}</span></article>`; }
 
 function renderDiagnosticos() {
+  if (!state.activeProject) {
+    return `${pageHead("Jornada do diagnóstico", "Diagnósticos", "Cadastre uma empresa para criar a primeira execução auditável.", `<button class="button gold" data-action="new-diagnosis">Novo diagnóstico</button>`)}
+      ${emptyProjectState("Nenhum diagnóstico cadastrado", "Esta tela exibirá as etapas, o contrato da execução, a qualidade e as pendências do diagnóstico selecionado.")}`;
+  }
   const q = qualityStatus(score());
   const openFindings = state.findings.filter((item) => item.status !== 'Concluído').length;
   const stages = [["Cadastro",true],["Documentos",state.documents.length > 0],["Conciliação",state.quality.reconciliation > 0],["Classificação",state.findings.length > 0],["Cenários",state.scenario.revenue > 0],["Liberação",score() >= 80 && openFindings === 0]];
@@ -269,6 +276,10 @@ function renderPlano() {
 }
 
 function renderRelatorios() {
+  if (!state.activeProject) {
+    return `${pageHead("Entrega integrada", "Relatórios", "Os relatórios serão gerados a partir de dados reais, evidências e versões do motor.")}
+      ${emptyProjectState("Nenhum relatório disponível", "Crie o primeiro diagnóstico e importe os documentos da empresa para construir o relatório executivo e sua memória técnica.")}`;
+  }
   const calc = calculateScenario(state.scenario);
   const impacts = [...state.findings].sort((a,b)=>b.impact-a.impact).slice(0,5);
   return `${pageHead("Entrega integrada", "Relatório executivo", "A visão do empresário e a memória técnica são produzidas pela mesma versão do motor.", `<button class="ghost" data-action="export-json">Exportar dados</button><button class="button gold" data-action="print-report">Imprimir / salvar PDF</button>`)}
@@ -291,7 +302,6 @@ function renderGovernanca() {
 function render() {
   renderNav(); renderContext();
   const views = { dashboard:renderDashboard, diagnosticos:renderDiagnosticos, importacao:renderImportacao, cenarios:renderCenarios, achados:renderAchados, plano:renderPlano, relatorios:renderRelatorios, governanca:renderGovernanca };
-  if (!state.activeProject && state.activeView !== 'dashboard') state.activeView = 'dashboard';
   main.innerHTML = (views[state.activeView] || renderDashboard)();
   main.focus({ preventScroll: true });
   if (state.activeView === "importacao") bindDropzone();
