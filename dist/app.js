@@ -3,6 +3,7 @@ import { calculateScenario, classifyAbc, decimal, money, qualityStatus, scoreQua
 const PREFERENCES_KEY = "diagnostico360:preferences:v2";
 const navItems = [
   ["dashboard", "⌂", "Visão executiva"],
+  ["cadastros", "▣", "Organizações e projetos"],
   ["diagnosticos", "◫", "Diagnósticos"],
   ["importacao", "⇧", "Dados e importação"],
   ["cenarios", "⌁", "Cenários 2026–2033"],
@@ -39,6 +40,7 @@ let saveTimer = null;
 let saveInFlight = false;
 let saveQueued = false;
 let findingFilter = "Todos";
+let diagnosisReturnView = "diagnosticos";
 const main = document.querySelector("#main");
 const dialog = document.querySelector("#dialog");
 const fileInput = document.querySelector("#fileInput");
@@ -227,9 +229,30 @@ function renderDiagnosticos() {
     </section>`;
 }
 
+function renderCadastros() {
+  const organizationCards = state.organizations.map((org) => {
+    const projects = state.projects.filter((project) => project.orgId === org.id);
+    return `<article class="card organization-card">
+      <div class="card-head"><div><div class="eyebrow">Organização</div><h3>${org.name}</h3><p>${org.cnpj || 'CNPJ não informado'} · ${org.regime || 'Regime não informado'}</p></div><div class="actions"><span class="pill">${projects.length} projeto(s)</span><button class="ghost" data-action="new-project" data-org="${org.id}">Novo projeto</button></div></div>
+      <div class="project-list">${projects.length ? projects.map((project) => `<div class="project-row"><span><strong>${project.name}</strong><small>${project.period || 'Período não informado'} · ${project.status}</small></span><button class="ghost" data-select-project="${project.id}">Selecionar e importar dados</button></div>`).join('') : '<div class="empty compact">Nenhum projeto cadastrado para esta organização.</div>'}</div>
+    </article>`;
+  }).join('');
+  return `${pageHead("Configuração do diagnóstico", "Organizações e projetos", "Cadastre a empresa e o projeto antes de enviar documentos. Cada arquivo ficará vinculado ao projeto selecionado.", `<button class="button gold" data-action="new-diagnosis">Cadastrar organização e projeto</button>`)}
+    <div class="notice"><strong>Fluxo correto:</strong> 1. cadastre a organização e o projeto; 2. selecione o projeto; 3. importe os arquivos. O sistema preserva essa vinculação no banco de dados.</div>
+    ${organizationCards || emptyProjectState("Nenhuma organização cadastrada", "Crie a primeira organização e o respectivo projeto para liberar a importação de arquivos.")}`;
+}
+
 function renderImportacao() {
-  return `${pageHead("Base auditável", "Dados e importação", "Preserve o original, registre a origem e acompanhe integridade, cobertura e erros por arquivo.", `<button class="ghost" data-action="export-data">Exportar inventário</button><button class="button gold" data-action="pick-files">Importar arquivos</button>`)}
-    <section class="dropzone" id="dropzone"><div><div class="dropzone-icon">⇧</div><h2>Solte seus arquivos aqui</h2><p>XML, ZIP, CSV, XLSX, PDF e TXT. XML e CSV são lidos diretamente; demais formatos entram na fila de processamento do ambiente.</p><button class="button" data-action="pick-files">Selecionar arquivos</button></div></section>
+  const hasProject = Boolean(state.activeOrg && state.activeProject);
+  const actions = hasProject
+    ? `<button class="ghost" data-action="export-data">Exportar inventário</button><button class="button gold" data-action="pick-files">Importar arquivos</button>`
+    : `<button class="button gold" data-view="cadastros">Cadastrar organização e projeto</button>`;
+  const uploadArea = hasProject
+    ? `<div class="notice"><strong>Destino dos arquivos:</strong> ${activeOrg().name} · ${activeProject().name}. Todo arquivo enviado ficará vinculado a esta organização e a este projeto.</div>
+      <section class="dropzone" id="dropzone"><div><div class="dropzone-icon">⇧</div><h2>Solte seus arquivos aqui</h2><p>XML, ZIP, CSV, XLSX, PDF e TXT. XML e CSV são lidos diretamente; demais formatos entram na fila de processamento do ambiente.</p><button class="button" data-action="pick-files">Selecionar arquivos</button></div></section>`
+    : `<section class="card empty-state import-blocked"><div class="empty-state-icon">1</div><h2>Cadastre a organização e o projeto primeiro</h2><p>A importação só é liberada depois que os arquivos puderem ser vinculados a uma empresa e a um diagnóstico específicos.</p><button class="button gold" data-view="cadastros">Ir para Organizações e projetos</button></section>`;
+  return `${pageHead("Base auditável", "Dados e importação", "Preserve o original, registre a origem e acompanhe integridade, cobertura e erros por arquivo.", actions)}
+    ${uploadArea}
     <section class="card" style="margin-top:18px"><div class="card-head"><div><h3>Arquivos recebidos</h3><p>${state.documents.reduce((sum,x)=>sum+(x.records||0),0).toLocaleString("pt-BR")} registros identificados</p></div>${status(`Cobertura ${state.quality.coverage}%`)}</div>
       <div class="grid">${state.documents.map((file)=>`<div class="file-row"><span class="file-icon">${file.type.split("/")[0]}</span><span><strong>${file.name}</strong><small>${file.size} · ${file.records || 0} registros · ${file.at}</small></span>${status(file.status)}<button class="icon-button" data-file="${file.id}" aria-label="Detalhes do arquivo">›</button></div>`).join("")}</div>
     </section>`;
@@ -301,7 +324,7 @@ function renderGovernanca() {
 
 function render() {
   renderNav(); renderContext();
-  const views = { dashboard:renderDashboard, diagnosticos:renderDiagnosticos, importacao:renderImportacao, cenarios:renderCenarios, achados:renderAchados, plano:renderPlano, relatorios:renderRelatorios, governanca:renderGovernanca };
+  const views = { dashboard:renderDashboard, cadastros:renderCadastros, diagnosticos:renderDiagnosticos, importacao:renderImportacao, cenarios:renderCenarios, achados:renderAchados, plano:renderPlano, relatorios:renderRelatorios, governanca:renderGovernanca };
   main.innerHTML = (views[state.activeView] || renderDashboard)();
   main.focus({ preventScroll: true });
   if (state.activeView === "importacao") bindDropzone();
@@ -327,8 +350,14 @@ function formDialog(kind) {
     <button class="button gold" style="grid-column:1/-1">Salvar registro</button></form>`);
 }
 function newDiagnosisDialog() {
-  openDialog(`<div class="dialog-head"><div><div class="eyebrow">Onboarding orientado</div><h2>Novo diagnóstico</h2></div><button class="close" data-action="close-dialog">×</button></div><form id="diagnosisForm" class="form-grid">
-    <label class="field" style="grid-column:1/-1"><span>Nome da organização</span><input name="orgName" required></label><label class="field"><span>CNPJ</span><input name="cnpj" required></label><label class="field"><span>Regime</span><select name="regime"><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label><label class="field"><span>Nome do projeto</span><input name="projectName" placeholder="Ex.: Diagnóstico tributário anual" required></label><label class="field"><span>Período</span><input name="period" placeholder="Ex.: 01/2026–12/2026" required></label><label class="field" style="grid-column:1/-1"><span>Objetivo do estudo</span><textarea name="scope" placeholder="Descreva o escopo real desta execução" required></textarea></label><button class="button gold" style="grid-column:1/-1">Criar diagnóstico</button></form>`);
+  diagnosisReturnView = ['cadastros', 'importacao'].includes(state.activeView) ? 'importacao' : 'diagnosticos';
+  openDialog(`<div class="dialog-head"><div><div class="eyebrow">Configuração inicial</div><h2>Cadastrar organização e projeto</h2></div><button class="close" data-action="close-dialog">×</button></div><p>Os dois cadastros serão criados juntos. Em seguida, você será direcionado para importar os arquivos.</p><form id="diagnosisForm" class="form-grid">
+    <label class="field" style="grid-column:1/-1"><span>Nome da organização</span><input name="orgName" required></label><label class="field"><span>CNPJ</span><input name="cnpj" required></label><label class="field"><span>Regime</span><select name="regime"><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option></select></label><label class="field"><span>Nome do projeto</span><input name="projectName" placeholder="Ex.: Diagnóstico tributário anual" required></label><label class="field"><span>Período</span><input name="period" placeholder="Ex.: 01/2026–12/2026" required></label><label class="field" style="grid-column:1/-1"><span>Objetivo do estudo</span><textarea name="scope" placeholder="Descreva o escopo real desta execução" required></textarea></label><button class="button gold" style="grid-column:1/-1">Criar organização e projeto</button></form>`);
+}
+function projectDialog(organizationId) {
+  const organization = state.organizations.find((item) => item.id === organizationId); if (!organization) return;
+  openDialog(`<div class="dialog-head"><div><div class="eyebrow">${organization.name}</div><h2>Novo projeto</h2></div><button class="close" data-action="close-dialog">×</button></div><p>Crie outro diagnóstico vinculado a esta organização.</p><form id="projectForm" data-organization-id="${organization.id}" class="form-grid">
+    <label class="field" style="grid-column:1/-1"><span>Nome do projeto</span><input name="projectName" placeholder="Ex.: Diagnóstico tributário anual" required></label><label class="field"><span>Período</span><input name="period" placeholder="Ex.: 01/2026–12/2026" required></label><label class="field" style="grid-column:1/-1"><span>Objetivo do estudo</span><textarea name="scope" placeholder="Descreva o escopo real desta execução" required></textarea></label><button class="button gold" style="grid-column:1/-1">Criar projeto e importar arquivos</button></form>`);
 }
 function ruleDialog() {
   openDialog(`<div class="dialog-head"><div><div class="eyebrow">Governança metodológica</div><h2>Nova regra</h2></div><button class="close" data-action="close-dialog">×</button></div><form id="ruleForm" class="form-grid"><label class="field"><span>Identificador</span><input name="id" required></label><label class="field"><span>Tema</span><input name="theme" required></label><label class="field" style="grid-column:1/-1"><span>Título</span><input name="title" required></label><label class="field" style="grid-column:1/-1"><span>Fonte oficial e dispositivo</span><textarea name="source" required></textarea></label><label class="field"><span>Versão</span><input name="version" required></label><label class="field"><span>Vigência</span><input name="effective" type="date" required></label><button class="button gold" style="grid-column:1/-1">Salvar para revisão</button></form>`);
@@ -372,11 +401,12 @@ function bindDropzone() {
   zone.addEventListener("drop",(event)=>handleFiles([...event.dataTransfer.files]));
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const target = event.target.closest("button,[data-view]"); if (!target) return;
   if (target.dataset.view) { state.activeView=target.dataset.view; saveState(); render(); document.querySelector("#sidebar").classList.remove("open"); return; }
   if (target.dataset.filter) { findingFilter=target.dataset.filter; render(); return; }
   if (target.dataset.finding) { detailFinding(target.dataset.finding); return; }
+  if (target.dataset.selectProject) { await switchProject(target.dataset.selectProject); state.activeView='importacao'; savePreferences(); render(); toast('Projeto selecionado. Agora importe os arquivos.'); return; }
   if (target.dataset.file) { const file=state.documents.find(x=>x.id===target.dataset.file); openDialog(`<div class="dialog-head"><h2>${file.name}</h2><button class="close" data-action="close-dialog">×</button></div><p>${status(file.status)}</p><p><strong>Integridade:</strong> ${file.integrity}</p><p><strong>Tamanho:</strong> ${file.size}</p><p><strong>Registros:</strong> ${file.records}</p><p><strong>Recebido:</strong> ${file.at}</p><div class="actions"><button class="button" data-download-file="${file.id}">Baixar original</button><button class="ghost" data-delete-file="${file.id}">Excluir</button></div>`); return; }
   if (target.dataset.downloadFile) { window.location.href=`/api/documents/${target.dataset.downloadFile}/download?tenantId=${encodeURIComponent(currentTenantId)}`; return; }
   if (target.dataset.deleteFile) { if (!confirm('Excluir este arquivo do inventário? A ação ficará registrada na auditoria.')) return; api(`/api/documents/${target.dataset.deleteFile}`, { method:'DELETE' }).then(()=>{ state.documents=state.documents.filter(x=>x.id!==target.dataset.deleteFile); closeDialog(); render(); toast('Arquivo excluído e ação registrada.'); }).catch((error)=>toast(error.message)); return; }
@@ -391,6 +421,7 @@ document.addEventListener("click", (event) => {
   if (action === "change-password") passwordDialog();
   if (action === "logout") { api('/api/auth/logout', { method:'POST' }).finally(()=>location.reload()); }
   if (action === "new-diagnosis") newDiagnosisDialog();
+  if (action === "new-project") projectDialog(target.dataset.org);
   if (action === "new-finding") formDialog("finding");
   if (action === "new-action") formDialog("action");
   if (action === "new-rule") ruleDialog();
@@ -418,8 +449,15 @@ document.addEventListener("submit", async (event) => {
     try {
       const organization = await api('/api/organizations', { method:'POST', body:JSON.stringify({ name:data.orgName, cnpj:data.cnpj, regime:data.regime, city:'Não informado', sector:'A classificar' }) });
       const project = await api('/api/projects', { method:'POST', body:JSON.stringify({ organizationId:organization.id, name:data.projectName, period:data.period, scope:data.scope, status:'Coleta', package:'A HOMOLOGAR' }) });
-      closeDialog(); await loadWorkspace(currentTenantId, project.id); state.activeView='diagnosticos'; savePreferences(); render(); toast('Empresa e diagnóstico criados no banco de dados.');
+      closeDialog(); await loadWorkspace(currentTenantId, project.id); state.activeView=diagnosisReturnView; savePreferences(); render(); toast('Organização e projeto criados. Agora você já pode importar os arquivos.');
     } catch (error) { toast(`Não foi possível criar o diagnóstico: ${error.message}`); }
+    return;
+  }
+  if (event.target.id === "projectForm") {
+    try {
+      const project = await api('/api/projects', { method:'POST', body:JSON.stringify({ organizationId:event.target.dataset.organizationId, name:data.projectName, period:data.period, scope:data.scope, status:'Coleta', package:'A HOMOLOGAR' }) });
+      closeDialog(); await loadWorkspace(currentTenantId, project.id); state.activeView='importacao'; savePreferences(); render(); toast('Projeto criado. Agora você já pode importar os arquivos.');
+    } catch (error) { toast(`Não foi possível criar o projeto: ${error.message}`); }
     return;
   }
   if (event.target.id === "ruleForm") state.rules.unshift({...data,status:"Em revisão"});
